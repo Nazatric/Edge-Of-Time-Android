@@ -1,0 +1,18 @@
+diff --git a/include/rex/chrono/chrono.h b/include/rex/chrono/chrono.h
+index d876846..eb16456 100644
+--- a/include/rex/chrono/chrono.h
++++ b/include/rex/chrono/chrono.h
+@@ -116,8 +116,11 @@ using XSystemClock = detail::NtSystemClock<detail::Domain::Guest>;
+ 
+ namespace std::chrono {
+ 
+-#ifdef __APPLE__
+-// Apple libc++ does not expose clock_time_conversion or clock_cast.
++#if defined(__APPLE__) || defined(__ANDROID__)
++// Neither Apple's libc++ nor the Android NDK's libc++ expose
++// clock_time_conversion / clock_cast (C++20 <chrono>). Verified failing on NDK
++// 27, 29 and 30. Provide the primary template so the specialisations below are
++// well-formed.
+ template <class, class>
+ struct clock_time_conversion {};
+ 

@@ -1,0 +1,51 @@
+diff --git a/include/rex/string/numeric.h b/include/rex/string/numeric.h
+index 85994c7..7ea5441 100644
+--- a/include/rex/string/numeric.h
++++ b/include/rex/string/numeric.h
+@@ -26,7 +26,18 @@
+ #include <rex/string/utf8.h>
+ #include <rex/vec128.h>
+ 
+-#if REX_PLATFORM_MAC
++// Not every libc++ implements floating-point std::from_chars (P0067R5).
++// AppleClang's libc++ lacks it, and so does the Android NDK's libc++ -- this
++// was verified against NDK 27 (clang 18), 29 and 30 (clang 21), all of which
++// fail to compile a float from_chars call. Fall back to the portable C-locale
++// parser below whenever the library does not advertise full <charconv>.
++#if REX_PLATFORM_MAC || REX_PLATFORM_ANDROID || !defined(__cpp_lib_to_chars)
++#define REX_USE_PORTABLE_FLOAT_FROM_CHARS 1
++#else
++#define REX_USE_PORTABLE_FLOAT_FROM_CHARS 0
++#endif
++
++#if REX_USE_PORTABLE_FLOAT_FROM_CHARS
+ #include <locale.h>
+ #endif
+ 
+@@ -114,7 +125,7 @@ inline T ifs(const std::string_view value, bool force_hex) {
+   return result;
+ }
+ 
+-#if REX_PLATFORM_MAC
++#if REX_USE_PORTABLE_FLOAT_FROM_CHARS
+ template <typename T>
+ inline std::from_chars_result portable_float_from_chars(const char* first, const char* last,
+                                                         T& value) {
+@@ -189,7 +200,7 @@ inline T fpfs(const std::string_view value, bool force_hex) {
+     }
+     std::memcpy(&result, &pun, sizeof(PUN));
+   } else {
+-#if REX_PLATFORM_MAC
++#if REX_USE_PORTABLE_FLOAT_FROM_CHARS
+     auto [p, error] = portable_float_from_chars(range.data(), range.data() + range.size(), result);
+ #else
+     auto [p, error] = std::from_chars(range.data(), range.data() + range.size(), result,
+@@ -316,7 +327,7 @@ inline vec128_t from_string<vec128_t>(const std::string_view value, bool force_h
+         assert_always();
+         return vec128_t();
+       }
+-#if REX_PLATFORM_MAC
++#if REX_USE_PORTABLE_FLOAT_FROM_CHARS
+       auto result = detail::portable_float_from_chars(p, end, v.f32[i]);
+ #else
+       auto result = std::from_chars(p, end, v.f32[i], std::chars_format::general);

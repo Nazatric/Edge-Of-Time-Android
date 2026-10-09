@@ -29,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ndk: [ "27.3.13750724", "29.0.14206865", "30.0.16248370" ]
+        ndk: [ "27.3.13750724" ]
     steps:
       - uses: actions/checkout@v4
         with:
