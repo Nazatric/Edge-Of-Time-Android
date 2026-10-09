@@ -1,0 +1,7 @@
+name: Permission Probe
+on: [workflow_dispatch]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "ndk=$ANDROID_NDK_LATEST_HOME"; ls $ANDROID_HOME/ndk 2>/dev/null; java -version
