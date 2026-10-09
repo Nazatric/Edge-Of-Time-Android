@@ -1,5 +1,5 @@
 diff --git a/src/ui/window_sdl.cpp b/src/ui/window_sdl.cpp
-index 2251429..642727f 100644
+index 2251429..8ad8768 100644
 --- a/src/ui/window_sdl.cpp
 +++ b/src/ui/window_sdl.cpp
 @@ -35,6 +35,8 @@
@@ -11,3 +11,19 @@ index 2251429..642727f 100644
  #else
  #include <X11/Xlib-xcb.h>
  #include <rex/ui/surface_gnulinux.h>
+@@ -398,6 +400,15 @@ std::unique_ptr<Surface> WindowSDL::CreateSurfaceImpl(Surface::TypeFlags allowed
+       SDL_Metal_DestroyView(metal_view);
+     }
+   }
++#elif REX_PLATFORM_ANDROID
++  if (allowed_types & Surface::kTypeFlag_AndroidNativeWindow) {
++    SDL_PropertiesID props = SDL_GetWindowProperties(sdl_window_);
++    auto* native_window = static_cast<ANativeWindow*>(
++        SDL_GetPointerProperty(props, SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, nullptr));
++    if (native_window) {
++      return std::make_unique<AndroidNativeWindowSurface>(native_window);
++    }
++  }
+ #else
+   SDL_PropertiesID props = SDL_GetWindowProperties(sdl_window_);
+   if (allowed_types & Surface::kTypeFlag_WaylandSurface) {

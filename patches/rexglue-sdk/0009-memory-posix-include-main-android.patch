@@ -1,0 +1,14 @@
+diff --git a/src/core/memory_posix.cpp b/src/core/memory_posix.cpp
+index b52bf39..2181e32 100644
+--- a/src/core/memory_posix.cpp
++++ b/src/core/memory_posix.cpp
+@@ -55,6 +55,9 @@
+ 
+ // TODO(tomc): Android or maybe na. idk
+ // #include "xenia/base/main_android.h"
++#if REX_PLATFORM_ANDROID
++#include <rex/main_android.h>
++#endif
+ #endif
+ 
+ namespace rex {
