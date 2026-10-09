@@ -2,18 +2,38 @@ name: Toolchain Probe
 on:
   push:
     branches: [ "arena/**" ]
+    paths: [ ".github/workflows/ci-probe.yml" ]
   workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
 jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Report Android toolchain on runner
+      - name: Collect runner toolchain facts
         run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "NDK_LATEST=$ANDROID_NDK_LATEST_HOME"
-          ls -1 "$ANDROID_HOME/ndk" 2>/dev/null || echo "no ndk dir"
-          cmake --version | head -1
-          ninja --version 2>/dev/null || echo "no ninja"
-          java -version 2>&1 | head -1
-          clang --version | head -1
-          nproc; free -g | head -2; df -h / | tail -1
+          {
+            echo "ANDROID_HOME=$ANDROID_HOME"
+            echo "NDK_LATEST=$ANDROID_NDK_LATEST_HOME"
+            echo "--- installed NDKs ---"
+            ls -1 "$ANDROID_HOME/ndk" 2>/dev/null || echo "none"
+            echo "--- cmdline tools / platforms ---"
+            ls -1 "$ANDROID_HOME/platforms" 2>/dev/null | tail -5
+            ls -1 "$ANDROID_HOME/build-tools" 2>/dev/null | tail -3
+            echo "--- host tools ---"
+            cmake --version | head -1
+            (ninja --version && echo ninja ok) 2>/dev/null || echo "no ninja"
+            java -version 2>&1 | head -1
+            clang --version | head -1
+            echo "--- resources ---"
+            nproc; free -g | head -2; df -h / | tail -1
+          } > probe.txt 2>&1
+          cat probe.txt
+      - name: Publish log to issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          { echo "### Toolchain Probe — run ${{ github.run_id }}"; echo '```'; tail -c 60000 probe.txt; echo '```'; } > body.md
+          gh issue comment 1 --repo ${{ github.repository }} --body-file body.md
