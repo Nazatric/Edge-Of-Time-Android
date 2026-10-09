@@ -117,6 +117,30 @@ jobs:
           fi
           ls -la build.log
 
+      - name: Inspect produced binaries
+        if: always()
+        continue-on-error: true
+        run: |
+          NDK="$ANDROID_HOME/ndk/${{ matrix.ndk }}"
+          READELF="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          {
+            echo "--- shared libraries / archives produced ---"
+            find out/android thirdparty/rexglue-sdk/out -name '*.so' -o -name '*.a' 2>/dev/null \
+              | head -40 | while read -r f; do
+                  printf '%10s  %s\n' "$(stat -c%s "$f")" "$f"
+                done
+            echo ""
+            echo "--- arch + 16 KB page alignment (Android 15 requirement) ---"
+            find out/android thirdparty/rexglue-sdk/out -name '*.so' 2>/dev/null | head -10 \
+              | while read -r so; do
+                  echo "== $so"
+                  "$READELF" -h "$so" 2>/dev/null | grep -E "Machine|Class" || true
+                  # LOAD segment alignment must be >= 0x4000 for 16 KB devices
+                  "$READELF" -l "$so" 2>/dev/null | awk '/LOAD/{print "   LOAD align " $NF}' | sort -u
+                done
+          } > artifacts.txt 2>&1
+          cat artifacts.txt
+
       - name: Report to log channel
         if: always()
         env:
@@ -128,6 +152,10 @@ jobs:
             echo "### Android Native Core — NDK \`${{ matrix.ndk }}\` — run ${{ github.run_id }}"
             echo "NDK=${{ matrix.ndk }} ABI=${ABI} API=${API}"
             echo ""
+            echo "#### artifacts"
+            echo '```'
+            tail -c 6000 artifacts.txt 2>/dev/null || echo "(none)"
+            echo '```'
             echo "#### libc++ probe"
             echo '```'
             if "$CXX" -std=c++23 -fexperimental-library \
