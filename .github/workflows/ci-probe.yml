@@ -1,7 +1,19 @@
-name: Permission Probe
-on: [workflow_dispatch]
+name: Toolchain Probe
+on:
+  push:
+    branches: [ "arena/**" ]
+  workflow_dispatch:
 jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "ndk=$ANDROID_NDK_LATEST_HOME"; ls $ANDROID_HOME/ndk 2>/dev/null; java -version
+      - name: Report Android toolchain on runner
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "NDK_LATEST=$ANDROID_NDK_LATEST_HOME"
+          ls -1 "$ANDROID_HOME/ndk" 2>/dev/null || echo "no ndk dir"
+          cmake --version | head -1
+          ninja --version 2>/dev/null || echo "no ninja"
+          java -version 2>&1 | head -1
+          clang --version | head -1
+          nproc; free -g | head -2; df -h / | tail -1
