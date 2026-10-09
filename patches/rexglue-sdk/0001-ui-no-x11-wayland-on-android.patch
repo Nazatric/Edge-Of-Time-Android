@@ -1,8 +1,21 @@
 diff --git a/src/ui/CMakeLists.txt b/src/ui/CMakeLists.txt
-index 5bd3dc5..d355e7f 100644
+index 5bd3dc5..4be24c8 100644
 --- a/src/ui/CMakeLists.txt
 +++ b/src/ui/CMakeLists.txt
-@@ -146,7 +146,12 @@ if(REXGLUE_USE_VULKAN)
+@@ -72,6 +72,12 @@ elseif(APPLE)
+     set(REXUI_PLATFORM_SOURCES
+         surface_mac.cpp
+     )
++elseif(ANDROID)
++    # Android presents to an ANativeWindow; surface_gnulinux.cpp would drag in
++    # xcb/wayland, which do not exist here.
++    set(REXUI_PLATFORM_SOURCES
++        ${REX_ANDROID_SUPPORT_DIR}/surface_android.cpp
++    )
+ else()
+     set(REXUI_PLATFORM_SOURCES
+         surface_gnulinux.cpp
+@@ -146,7 +152,12 @@ if(REXGLUE_USE_VULKAN)
  endif()
  
  # Platform-specific dependencies

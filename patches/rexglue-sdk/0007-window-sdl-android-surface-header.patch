@@ -1,0 +1,13 @@
+diff --git a/src/ui/window_sdl.cpp b/src/ui/window_sdl.cpp
+index 2251429..642727f 100644
+--- a/src/ui/window_sdl.cpp
++++ b/src/ui/window_sdl.cpp
+@@ -35,6 +35,8 @@
+ #include <SDL3/SDL_metal.h>
+ 
+ #include <rex/ui/surface_mac.h>
++#elif REX_PLATFORM_ANDROID
++#include <rex/ui/surface_android.h>
+ #else
+ #include <X11/Xlib-xcb.h>
+ #include <rex/ui/surface_gnulinux.h>

@@ -46,7 +46,8 @@
     .type   rex_fiber_swap, %function
 
 /*
- * void rex_fiber_swap(RexFiberContext* from /* x0 */, RexFiberContext* to /* x1 */);
+ * void rex_fiber_swap(RexFiberContext* from, RexFiberContext* to);
+ *   x0 = from, x1 = to
  *
  * Saves the current execution context into *from, then resumes *to. Control
  * returns here (and then to the original caller) when some other fiber swaps

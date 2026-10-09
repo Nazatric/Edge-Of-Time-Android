@@ -1,0 +1,18 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 9b3cdf5..43523d3 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -241,6 +241,13 @@ if(REXGLUE_BUILD_TESTS)
+ endif()
+ 
+ # Third-party dependencies (vendored sources only)
++if(ANDROID AND REX_ANDROID_SUPPORT_INCLUDE)
++    # <rex/main_android.h> and <rex/thread/fiber_context_aarch64.h> are pulled in
++    # by public SDK headers (thread/fiber.h), so every target that includes them
++    # needs this on its include path -- not just rexcore.
++    include_directories(${REX_ANDROID_SUPPORT_INCLUDE})
++endif()
++
+ add_subdirectory(thirdparty)
+ 
+ # Enable warnings after thirdparty
