@@ -1,5 +1,5 @@
 diff --git a/src/core/CMakeLists.txt b/src/core/CMakeLists.txt
-index 1ddafd0..963796f 100644
+index 1ddafd0..4b84835 100644
 --- a/src/core/CMakeLists.txt
 +++ b/src/core/CMakeLists.txt
 @@ -63,7 +63,6 @@ elseif(UNIX)
@@ -10,11 +10,14 @@ index 1ddafd0..963796f 100644
          mapped_memory_posix.cpp
          math_gcc.cpp
          memory_posix.cpp
-@@ -74,6 +73,19 @@ elseif(UNIX)
+@@ -74,6 +73,22 @@ elseif(UNIX)
          system_posix.cpp
          threading_posix.cpp
      )
 +    if(ANDROID)
++        # fiber_switch_aarch64.S is assembly; CMake only knows how to compile it
++        # once the ASM language is enabled for this project.
++        enable_language(ASM)
 +        # Bionic lacks the ucontext fiber API, and the SDK's Android paths
 +        # reference <rex/main_android.h> / rex::GetAndroidApiLevel(), which the
 +        # published SDK never shipped. Both are supplied by the Android port.
