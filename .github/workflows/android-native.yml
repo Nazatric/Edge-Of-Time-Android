@@ -83,6 +83,10 @@ jobs:
         run: |
           NDK="$ANDROID_HOME/ndk/${{ matrix.ndk }}"
           echo "NDK=$NDK"
+          # Android 15+ devices may use 16 KB memory pages. Shared libraries
+          # built with the default 4 KB max-page-size fail to load there, so
+          # every ELF must be laid out with 16 KB-aligned LOAD segments.
+          LINK16K="-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384"
           set +e
           cmake -S thirdparty/rexglue-sdk -B out/android \
             -G Ninja \
@@ -95,8 +99,8 @@ jobs:
             -DREX_ANDROID_SUPPORT_DIR="$PWD/android/rex_android" \
             -DREX_ANDROID_SUPPORT_INCLUDE="$PWD/android/rex_android/include" \
             -DCMAKE_CXX_FLAGS="-fexperimental-library" \
-            -DCMAKE_EXE_LINKER_FLAGS="-fexperimental-library" \
-            -DCMAKE_SHARED_LINKER_FLAGS="-fexperimental-library" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fexperimental-library $LINK16K" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-fexperimental-library $LINK16K" \
             > configure.log 2>&1
           echo "CONFIGURE_EXIT=$?" | tee -a configure.log
           ls -la configure.log
