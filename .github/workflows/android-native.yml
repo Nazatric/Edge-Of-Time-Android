@@ -7,6 +7,7 @@ on:
       - ".github/workflows/android-native.yml"
       - "tools/**"
       - "cmake/**"
+      - "patches/**"
       - "android/**"
       - "src/**"
       - "CMakeLists.txt"
@@ -47,6 +48,9 @@ jobs:
             n=$(ls "$d" 2>/dev/null | wc -l)
             [ "$n" -gt 0 ] && echo "OK   $d" || echo "EMPTY $d"
           done
+
+      - name: Apply Android patches to SDK
+        run: ./tools/ci/apply_patches.sh
 
       - name: Configure for Android arm64
         continue-on-error: true
