@@ -1,0 +1,118 @@
+# Android Port Progress Log
+
+Every entry below is backed by a real GitHub Actions run. Run IDs are given so
+any claim can be checked. Build logs are mirrored into
+[issue #1](https://github.com/Nazatric/Edge-Of-Time-Android/issues/1) because
+the raw Actions log archive host is unreachable from the dev sandbox.
+
+**Nothing in this file has been executed on an Android device.** No device or
+emulator is available to the agent. Every claim here is a *build-time* result.
+
+---
+
+## Current status
+
+| Milestone | State | Evidence |
+| --- | --- | --- |
+| M0 Repo + dependency audit | ✅ done | `docs/ANDROID_PORT_AUDIT.md` |
+| M1 ReXGlue SDK compiles **and links** for `arm64-v8a` | ✅ **done** | run `37994751899` (`BUILD_EXIT=0`) |
+| M1a arm64 ELF verified + 16 KB page aligned | ✅ **done** | run `37996301874` (`LOAD align 0x4000`) |
+| M2 Gradle project producing an installable APK | ⬜ next | — |
+| M3 Android lifecycle / surface recreation | ⬜ not started | — |
+| M4 Vulkan device creation on a device | 🔒 blocked | needs hardware |
+| M5 Touchscreen controls | ⬜ not started | — |
+| M6 Game-file setup flow (SAF) | 🟡 native half done | `filesystem_android.cpp` |
+| Gameplay / rendering / audio / FPS | 🔒 blocked | needs game dump **and** hardware |
+
+### Build output actually produced (run `37996301874`)
+
+```
+librexruntime.so     91,081,176 bytes   ELF64 AArch64   LOAD align 0x4000
+librexgpu-xenos.so   52,416,248 bytes   ELF64 AArch64   LOAD align 0x4000
+libSDL3.a            18,429,826 bytes
+librexcodegen.a      70,272,804 bytes
+liblibavcodec.a       4,950,362 bytes
+libglslang.a / libSPIRV.a / libMachineIndependent.a ...
+```
+
+---
+
+## What was fixed, in order, each from a real CI failure
+
+| # | Symptom (from CI) | Root cause | Fix | Commit |
+| --- | --- | --- | --- | --- |
+| 1 | `pkg_check_modules(X11_XCB REQUIRED x11-xcb)` fails | `if(UNIX AND NOT APPLE)` matches Android | Added an `if(ANDROID)` branch linking `android`+`log` | `9303adb` |
+| 2 | `no matching function for call to 'from_chars'` | Android libc++ has no floating-point `std::from_chars` (P0067R5) | Widened upstream's existing macOS fallback `portable_float_from_chars` to Android via `__cpp_lib_to_chars` | patch 0002 |
+| 3 | `explicit specialization of undeclared template 'clock_time_conversion'` | Android libc++ has no `std::chrono::clock_time_conversion` | Widened upstream's `__APPLE__` shim to `__ANDROID__` | patch 0003 |
+| 4 | `no member named 'jthread' in namespace 'std'` | libc++ gates `<stop_token>`/`jthread` behind `-fexperimental-library` | Added the flag | — |
+| 5 | `use of undeclared identifier 'getcontext'` | **Bionic has no ucontext fiber API at all** | Wrote an AArch64 fiber backend with a hand-written AAPCS64 context switch | `bb4b...` |
+| 6 | `no member named 'GetAndroidApiLevel' in namespace 'rex'` | SDK calls it but never ships it (Xenia leftover) | Implemented `rex::GetAndroidApiLevel()` | — |
+| 7 | `'rex/main_android.h' file not found` | Header referenced by SDK, never published | Wrote it | — |
+| 8 | `CMAKE_ASM_COMPILE_OBJECT` not set | `.S` needs `enable_language(ASM)` | Added | — |
+| 9 | asm `unexpected token at start of statement` | My own bug: nested `/* */` in a block comment | Fixed | — |
+| 10 | `PTHREAD_MUTEX_ROBUST` undeclared | Bionic has no robust mutexes | Gated robust-mutex recovery on glibc | patch 0008 |
+| 11 | `'X11/Xlib-xcb.h' file not found` | `window_sdl.cpp` / `surface_gnulinux.cpp` built on Android | Added Android branches, swapped the platform surface source | patches 0001/0007 |
+| 12 | `'rex/ui/surface_android.h' file not found` | SDK's Vulkan presenter needs it; never published | Implemented `AndroidNativeWindowSurface` | — |
+| 13 | `unable to find library -lpthread` / `-lrt` | Bionic folds both into libc | Link `log`+`android` instead | — |
+| 14 | `undefined symbol: OpenAndroidContentFileDescriptor` | Declared + called by SDK, never implemented | Implemented SAF resolution via `ContentResolver.openFileDescriptor` + `detachFd` | — |
+| 15 | `LOAD align 0x1000` | Default 4 KB page layout | `-Wl,-z,max-page-size=16384`; verified `0x4000` | — |
+
+### Headline finding
+
+The published ReXGlue SDK contains **half-finished Android support**: it defines
+`REX_PLATFORM_ANDROID`, reserves `kTypeIndex_AndroidNativeWindow` as the *first*
+surface type, has a complete `vkCreateAndroidSurfaceKHR` presenter path, and
+calls `rex::GetAndroidApiLevel()` and `OpenAndroidContentFileDescriptor()` —
+but ships none of the files those depend on. `memory_posix.cpp:57` still carries
+the commented-out `// #include "xenia/base/main_android.h"` it was derived from.
+
+Items 5, 6, 7, 12 and 14 above are the missing pieces, now implemented in
+`android/rex_android/`.
+
+---
+
+## Infrastructure notes
+
+- **Builds run on GitHub Actions**, because the dev sandbox cannot reach
+  `dl.google.com` and so cannot install the NDK. Runner has NDK 27/29/30,
+  CMake 3.31.6, Ninja, JDK 17, 4 cores, 15 GB RAM.
+- **NDK matrix tested** (run `37989832873`): the `from_chars`/`chrono` gaps are
+  present on NDK 27 (clang 18), 29 and 30 (clang 21) alike, so they are a libc++
+  limitation and not fixable by bumping the toolchain. Build is pinned to NDK 27.
+- **Build parallelism capped at 2.** At `-j4` with PCH, clang was OOM-killed and
+  ninja reported `subcommand failed` with no diagnostic at all.
+- **SDK is patched, not forked.** All changes live in `patches/rexglue-sdk/` and
+  are applied by `tools/ci/apply_patches.sh`, which is idempotent and fails loudly
+  if a patch stops applying to the pinned submodule revision. This keeps upstream
+  BSD-3-Clause attribution and history intact and keeps the changes upstreamable.
+
+---
+
+## Hard blockers (cannot be engineered around here)
+
+1. **No game code exists publicly.** `upstream/generated/` holds only
+   `rexglue.cmake`. The recompiled PowerPC C++ is produced by
+   `rexglue codegen reeot_manifest.toml` from the builder's own
+   `Default.xex` + `Data/GameLogic.dll` **with the title update applied**.
+   CI cannot do this and neither can I — no legal copy exists here.
+   *Therefore no APK produced by this repository can reach gameplay yet.*
+2. **A shader cache is also required.** Without `generated/shader_cache.cpp`
+   (≈10 min to generate from the user's own `.pkz` archives) CMake builds
+   `shader_cache_empty.cpp` and the game cannot draw, by upstream's own design.
+3. **No Android device or emulator is available to the agent.** No `adb`, no
+   logcat, no tombstones, no GPU. Rendering, audio, input, stability and FPS are
+   therefore all **unverified**, and no benchmark numbers will be invented.
+
+---
+
+## Next highest-priority action
+
+**M2: add the Gradle/AGP project** under `android/app/` that packages
+`librexruntime.so` + `librexgpu-xenos.so` into an `arm64-v8a` APK via
+`externalNativeBuild`, and produce a debug APK artifact in CI. That is buildable
+and verifiable without the game files, and gives a real installable artifact for
+device testing by someone who has a dump.
+
+After that, in order: Android lifecycle + surface recreation (M3), touchscreen
+controls derived from `upstream/src/goliath/controller/pad_actions.h` (M5), and
+the Java half of the SAF setup flow (M6).

@@ -247,7 +247,9 @@ edit in sandbox → commit → push → GitHub Actions builds with the real NDK
 
 Staged milestones, each gated on real CI output:
 
-1. **M1** — configure + compile ReXGlue SDK core libs for `arm64-v8a`. *(in progress)*
+1. **M1** — configure + compile ReXGlue SDK core libs for `arm64-v8a`. ✅ **done**
+   — full compile *and link*, run `37994751899`; arm64 ELF + 16 KB alignment
+   verified in run `37996301874`. See `docs/ANDROID_PORT_PROGRESS.md`.
 2. **M2** — Gradle project producing an installable `arm64-v8a` APK.
 3. **M3** — Android platform layer (storage, lifecycle, surface) replacing `src/platform/`.
 4. **M4** — SDL3 + Vulkan device creation on an Android surface.
@@ -303,7 +305,16 @@ cmake --build <builddir> --target reeot_shader_cache
 
 ## 8. Open questions / unverified items
 
+- ✅ RESOLVED: Android's libc++ gaps (`from_chars`, `clock_time_conversion`,
+  `jthread`) — fixed via patches 0002/0003 and `-fexperimental-library`.
+- ✅ RESOLVED: Bionic has no ucontext fibers — AArch64 fiber backend written.
+- ✅ RESOLVED: SDK's Android support was incomplete (`main_android.h`,
+  `GetAndroidApiLevel`, `surface_android.h`, `OpenAndroidContentFileDescriptor`
+  all referenced but never shipped) — all now implemented in `android/rex_android/`.
+- ✅ RESOLVED: 16 KB page alignment — `-Wl,-z,max-page-size=16384`, verified.
+- ✅ RESOLVED: FFmpeg cross-builds for arm64-v8a (libavcodec/libavutil produced).
 - ⬜ Does `mapped_memory_posix.cpp` reserve an address range Android will grant?
+  **Still the top runtime risk** — compiles, but untestable without a device.
 - ⬜ Does FFmpeg cross-build cleanly for arm64-v8a within this tree?
 - ⬜ Is `plume`'s Vulkan backend free of desktop-only extension assumptions?
 - ⬜ Do the host HLSL shaders in `src/gpu/shaders/hlsl/` compile to SPIR-V for mobile?
