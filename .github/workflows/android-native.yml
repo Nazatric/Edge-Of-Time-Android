@@ -1,0 +1,91 @@
+name: Android Native Core
+
+on:
+  push:
+    branches: [ "arena/**" ]
+    paths:
+      - ".github/workflows/android-native.yml"
+      - "cmake/**"
+      - "android/**"
+      - "src/**"
+      - "CMakeLists.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  NDK_VERSION: "27.3.13750724"
+  ABI: "arm64-v8a"
+  API: "28"
+
+jobs:
+  native-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Fetch required submodules (shallow, skip heavy res/)
+        run: |
+          set -x
+          git submodule update --init --depth 1 thirdparty/rexglue-sdk || true
+          cd thirdparty/rexglue-sdk
+          # Only the submodules the core libraries actually need.
+          for m in simde fmt spdlog tomlplusplus utfcpp xxHash vulkan-headers \
+                   vulkan-memory-allocator o1heap cli11 imgui sdl3; do
+            git submodule update --init --depth 1 "thirdparty/$m" || echo "MISS $m"
+          done
+          ls thirdparty
+
+      - name: Configure (NDK ${{ env.NDK_VERSION }}, ${{ env.ABI }})
+        id: cfg
+        continue-on-error: true
+        run: |
+          NDK="$ANDROID_HOME/ndk/${NDK_VERSION}"
+          echo "using NDK=$NDK"
+          cmake -S thirdparty/rexglue-sdk -B out/android \
+            -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI="$ABI" \
+            -DANDROID_PLATFORM="android-$API" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DREXGLUE_BUILD_TESTS=OFF \
+            -DREXGLUE_ENABLE_TRACY=OFF \
+            > configure.log 2>&1
+          echo "exit=$?" >> configure.log
+          tail -60 configure.log
+
+      - name: Build rex core libraries
+        id: build
+        continue-on-error: true
+        run: |
+          cmake --build out/android --parallel $(nproc) > build.log 2>&1 || true
+          tail -60 build.log
+
+      - name: Report to log channel
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### Android Native Core — run ${{ github.run_id }} (\`${{ github.sha }}\`)"
+            echo "NDK=${NDK_VERSION} ABI=${ABI} API=${API}"
+            echo ""
+            echo "#### configure (tail)"
+            echo '```'
+            tail -c 25000 configure.log 2>/dev/null || echo "no configure.log"
+            echo '```'
+            echo "#### first errors"
+            echo '```'
+            grep -nE "error:|Error|FAILED|CMake Error" build.log 2>/dev/null | head -60 || echo "none"
+            echo '```'
+            echo "#### build (tail)"
+            echo '```'
+            tail -c 25000 build.log 2>/dev/null || echo "no build.log"
+            echo '```'
+          } > body.md
+          gh issue comment 1 --repo ${{ github.repository }} --body-file body.md
