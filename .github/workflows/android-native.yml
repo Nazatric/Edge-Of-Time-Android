@@ -68,8 +68,8 @@ jobs:
             echo "LIBCXX_PROBE=FAIL" >> probe.txt
             head -25 probe.err >> probe.txt
           fi
-          if "$CXX" -std=c++23 -fexperimental-library -DREX_PROBE_JTHREAD \
-               -c tools/ci/libcxx_probe.cpp -o /dev/null 2>jt.err; then
+          if "$CXX" -std=c++23 -fexperimental-library \
+               -c tools/ci/jthread_probe.cpp -o /dev/null 2>jt.err; then
             echo "JTHREAD_WITH_EXPERIMENTAL=PASS" >> probe.txt
           else
             echo "JTHREAD_WITH_EXPERIMENTAL=FAIL" >> probe.txt
@@ -104,7 +104,11 @@ jobs:
         run: |
           set +e
           if [ -d out/android ]; then
-            cmake --build out/android --parallel "$(nproc)" > build.log 2>&1
+            # -k 0 keeps building after the first failure so one report shows
+            # every distinct error. Parallelism is capped at 2: clang with PCH
+            # peaks well above 3 GB/process and the runner was being OOM-killed
+            # (ninja reported "subcommand failed" with no diagnostic at all).
+            cmake --build out/android --parallel 2 -- -k 0 > build.log 2>&1
             echo "BUILD_EXIT=$?" | tee -a build.log
           else
             echo "configure did not produce out/android; nothing to build" > build.log
@@ -124,8 +128,8 @@ jobs:
             echo ""
             echo "#### libc++ probe"
             echo '```'
-            if "$CXX" -std=c++23 -fexperimental-library -DREX_PROBE_JTHREAD \
-               -c tools/ci/libcxx_probe.cpp -o /dev/null 2>jt.err; then
+            if "$CXX" -std=c++23 -fexperimental-library \
+               -c tools/ci/jthread_probe.cpp -o /dev/null 2>jt.err; then
             echo "JTHREAD_WITH_EXPERIMENTAL=PASS" >> probe.txt
           else
             echo "JTHREAD_WITH_EXPERIMENTAL=FAIL" >> probe.txt
@@ -143,7 +147,16 @@ jobs:
             echo '```'
             echo "#### build: error lines"
             echo '```'
-            grep -nE "error:|FAILED:|CMake Error|undefined reference|No such file" bld.clean | head -60 || true
+            grep -nE "error:|FAILED:|CMake Error|undefined reference|No such file|Killed|signal" bld.clean | head -80 || echo "(no error lines matched)"
+            echo '```'
+            echo "#### build: FAILED blocks"
+            echo '```'
+            grep -A25 "FAILED:" bld.clean | head -150 || echo "(no FAILED blocks)"
+            echo '```'
+            echo "#### memory"
+            echo '```'
+            free -m || true
+            dmesg 2>/dev/null | grep -i "killed process" | tail -5 || echo "(dmesg unavailable)"
             echo '```'
             echo "#### build: tail"
             echo '```'
