@@ -47,7 +47,7 @@ jobs:
         run: |
           NDK="$ANDROID_HOME/ndk/${NDK_VERSION}"
           echo "using NDK=$NDK"
-          cmake -S thirdparty/rexglue-sdk -B out/android \
+          cp "$GITHUB_WORKSPACE/strip_noise.py" . 2>/dev/null; cmake -S thirdparty/rexglue-sdk -B out/android \
             -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI="$ABI" \
