@@ -61,24 +61,15 @@ jobs:
         run: |
           NDK="$ANDROID_HOME/ndk/${{ matrix.ndk }}"
           CXX="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android28-clang++"
-          cat > probe.cpp <<'CPP'
-          #include <charconv>
-          #include <chrono>
-          #include <cstdio>
-          int main() {
-            float f{};
-            const char* s = "1.5";
-            auto r = std::from_chars(s, s + 3, f, std::chars_format::general);
-            (void)r;
-            std::chrono::clock_time_conversion<std::chrono::system_clock,
-                                               std::chrono::system_clock> c{};
-            (void)c;
-            std::printf("ok\n");
-          }
-CPP
-          "$CXX" -std=c++23 -c probe.cpp -o /dev/null 2>&1 | head -25 \
-            && echo "LIBCXX_PROBE=PASS" || echo "LIBCXX_PROBE=FAIL"
-          "$CXX" --version | head -2
+          "$CXX" --version | head -2 > probe.txt
+          if "$CXX" -std=c++23 -c tools/ci/libcxx_probe.cpp -o /dev/null 2>probe.err; then
+            echo "LIBCXX_PROBE=PASS" >> probe.txt
+          else
+            echo "LIBCXX_PROBE=FAIL" >> probe.txt
+            head -25 probe.err >> probe.txt
+          fi
+          cat probe.txt
+
 
       - name: Configure for Android arm64
         continue-on-error: true
@@ -121,6 +112,10 @@ CPP
             echo "### Android Native Core — NDK \`${{ matrix.ndk }}\` — run ${{ github.run_id }}"
             echo "NDK=${{ matrix.ndk }} ABI=${ABI} API=${API}"
             echo ""
+            echo "#### libc++ probe"
+            echo '```'
+            cat probe.txt 2>/dev/null || echo "(no probe)"
+            echo '```'
             echo "#### configure: CMake errors"
             echo '```'
             grep -A14 "CMake Error" cfg.clean | head -100 || true
