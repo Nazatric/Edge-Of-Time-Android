@@ -1,0 +1,32 @@
+diff --git a/src/core/CMakeLists.txt b/src/core/CMakeLists.txt
+index 1ddafd0..963796f 100644
+--- a/src/core/CMakeLists.txt
++++ b/src/core/CMakeLists.txt
+@@ -63,7 +63,6 @@ elseif(UNIX)
+         dynlib_posix.cpp
+         exception_handler_posix.cpp
+         filesystem_posix.cpp
+-        fiber_posix.cpp
+         mapped_memory_posix.cpp
+         math_gcc.cpp
+         memory_posix.cpp
+@@ -74,6 +73,19 @@ elseif(UNIX)
+         system_posix.cpp
+         threading_posix.cpp
+     )
++    if(ANDROID)
++        # Bionic lacks the ucontext fiber API, and the SDK's Android paths
++        # reference <rex/main_android.h> / rex::GetAndroidApiLevel(), which the
++        # published SDK never shipped. Both are supplied by the Android port.
++        target_sources(rexcore PRIVATE
++            ${REX_ANDROID_SUPPORT_DIR}/fiber_android.cpp
++            ${REX_ANDROID_SUPPORT_DIR}/fiber_switch_aarch64.S
++            ${REX_ANDROID_SUPPORT_DIR}/main_android.cpp
++        )
++        target_include_directories(rexcore PUBLIC ${REX_ANDROID_SUPPORT_INCLUDE})
++    else()
++        target_sources(rexcore PRIVATE fiber_posix.cpp)
++    endif()
+ endif()
+ 
+ # Xenos data-format layer (stateless; headers under include/rex/graphics/).
