@@ -1,5 +1,5 @@
 diff --git a/src/core/CMakeLists.txt b/src/core/CMakeLists.txt
-index 1ddafd0..4b84835 100644
+index 1ddafd0..5fbc1d0 100644
 --- a/src/core/CMakeLists.txt
 +++ b/src/core/CMakeLists.txt
 @@ -63,7 +63,6 @@ elseif(UNIX)
@@ -33,3 +33,15 @@ index 1ddafd0..4b84835 100644
  endif()
  
  # Xenos data-format layer (stateless; headers under include/rex/graphics/).
+@@ -100,6 +115,11 @@ target_include_directories(rexcore PRIVATE
+ 
+ if(APPLE)
+     target_link_libraries(rexcore PRIVATE pthread)
++elseif(ANDROID)
++    # Bionic folds pthread, librt and libdl into libc; the separate libraries
++    # do not exist and -lpthread/-lrt fail to link. liblog/libandroid are the
++    # Android equivalents actually needed here.
++    target_link_libraries(rexcore PRIVATE log android)
+ elseif(UNIX)
+     target_link_libraries(rexcore PRIVATE pthread rt dl)
+ endif()
