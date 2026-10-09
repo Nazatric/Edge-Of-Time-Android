@@ -68,6 +68,13 @@ jobs:
             echo "LIBCXX_PROBE=FAIL" >> probe.txt
             head -25 probe.err >> probe.txt
           fi
+          if "$CXX" -std=c++23 -fexperimental-library -DREX_PROBE_JTHREAD \
+               -c tools/ci/libcxx_probe.cpp -o /dev/null 2>jt.err; then
+            echo "JTHREAD_WITH_EXPERIMENTAL=PASS" >> probe.txt
+          else
+            echo "JTHREAD_WITH_EXPERIMENTAL=FAIL" >> probe.txt
+            head -15 jt.err >> probe.txt
+          fi
           cat probe.txt
 
 
@@ -85,6 +92,9 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DREXGLUE_BUILD_TESTS=OFF \
             -DREXGLUE_ENABLE_TRACY=OFF \
+            -DCMAKE_CXX_FLAGS="-fexperimental-library" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fexperimental-library" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-fexperimental-library" \
             > configure.log 2>&1
           echo "CONFIGURE_EXIT=$?" | tee -a configure.log
           ls -la configure.log
@@ -114,7 +124,14 @@ jobs:
             echo ""
             echo "#### libc++ probe"
             echo '```'
-            cat probe.txt 2>/dev/null || echo "(no probe)"
+            if "$CXX" -std=c++23 -fexperimental-library -DREX_PROBE_JTHREAD \
+               -c tools/ci/libcxx_probe.cpp -o /dev/null 2>jt.err; then
+            echo "JTHREAD_WITH_EXPERIMENTAL=PASS" >> probe.txt
+          else
+            echo "JTHREAD_WITH_EXPERIMENTAL=FAIL" >> probe.txt
+            head -15 jt.err >> probe.txt
+          fi
+          cat probe.txt 2>/dev/null || echo "(no probe)"
             echo '```'
             echo "#### configure: CMake errors"
             echo '```'

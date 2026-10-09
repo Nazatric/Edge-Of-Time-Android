@@ -31,3 +31,16 @@ int main() {
   std::printf("ok %f\n", static_cast<double>(f));
   return 0;
 }
+
+// --- Secondary probe: std::jthread / std::stop_token ---------------------
+// libc++ keeps <stop_token> and std::jthread behind -fexperimental-library.
+// Used by rexglue-sdk/src/core/timer_queue.cpp:43,47
+// Compile this translation unit separately with REX_PROBE_JTHREAD defined.
+#ifdef REX_PROBE_JTHREAD
+#include <stop_token>
+#include <thread>
+void probe_jthread() {
+  std::jthread t([](std::stop_token st) { (void)st; });
+  t.request_stop();
+}
+#endif
