@@ -26,6 +26,10 @@ jobs:
   native-core:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        ndk: [ "27.3.13750724", "29.0.14206865", "30.0.16248370" ]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,10 +56,34 @@ jobs:
       - name: Apply Android patches to SDK
         run: ./tools/ci/apply_patches.sh
 
+      - name: Probe libc++ features
+        continue-on-error: true
+        run: |
+          NDK="$ANDROID_HOME/ndk/${{ matrix.ndk }}"
+          CXX="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android28-clang++"
+          cat > probe.cpp <<'CPP'
+          #include <charconv>
+          #include <chrono>
+          #include <cstdio>
+          int main() {
+            float f{};
+            const char* s = "1.5";
+            auto r = std::from_chars(s, s + 3, f, std::chars_format::general);
+            (void)r;
+            std::chrono::clock_time_conversion<std::chrono::system_clock,
+                                               std::chrono::system_clock> c{};
+            (void)c;
+            std::printf("ok\n");
+          }
+CPP
+          "$CXX" -std=c++23 -c probe.cpp -o /dev/null 2>&1 | head -25 \
+            && echo "LIBCXX_PROBE=PASS" || echo "LIBCXX_PROBE=FAIL"
+          "$CXX" --version | head -2
+
       - name: Configure for Android arm64
         continue-on-error: true
         run: |
-          NDK="$ANDROID_HOME/ndk/${NDK_VERSION}"
+          NDK="$ANDROID_HOME/ndk/${{ matrix.ndk }}"
           echo "NDK=$NDK"
           set +e
           cmake -S thirdparty/rexglue-sdk -B out/android \
@@ -90,8 +118,8 @@ jobs:
           python3 tools/ci/strip_noise.py configure.log > cfg.clean 2>/dev/null || echo "(no configure.log)" > cfg.clean
           python3 tools/ci/strip_noise.py build.log     > bld.clean 2>/dev/null || echo "(no build.log)" > bld.clean
           {
-            echo "### Android Native Core — run ${{ github.run_id }} (\`${{ github.sha }}\`)"
-            echo "NDK=${NDK_VERSION} ABI=${ABI} API=${API}"
+            echo "### Android Native Core — NDK \`${{ matrix.ndk }}\` — run ${{ github.run_id }}"
+            echo "NDK=${{ matrix.ndk }} ABI=${ABI} API=${API}"
             echo ""
             echo "#### configure: CMake errors"
             echo '```'
