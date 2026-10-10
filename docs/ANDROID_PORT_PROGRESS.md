@@ -17,12 +17,37 @@ emulator is available to the agent. Every claim here is a *build-time* result.
 | M0 Repo + dependency audit | ✅ done | `docs/ANDROID_PORT_AUDIT.md` |
 | M1 ReXGlue SDK compiles **and links** for `arm64-v8a` | ✅ **done** | run `37994751899` (`BUILD_EXIT=0`) |
 | M1a arm64 ELF verified + 16 KB page aligned | ✅ **done** | run `37996301874` (`LOAD align 0x4000`) |
-| M2 Gradle project producing an installable APK | ⬜ next | — |
-| M3 Android lifecycle / surface recreation | ⬜ not started | — |
+| M2 Gradle project producing an installable APK | ✅ **done** | runs `38025918515` + `38026377028` |
+| M2a APK verified (badging, arch, 16 KB, SHA-256) + prerelease published | ✅ **done** | see "APK delivery" below |
+| M3 Android lifecycle / surface recreation | 🟡 largely done | patches 0010/0011 + surface acquire/release; **device-untested** |
 | M4 Vulkan device creation on a device | 🔒 blocked | needs hardware |
 | M5 Touchscreen controls | ⬜ not started | — |
-| M6 Game-file setup flow (SAF) | 🟡 native half done | `filesystem_android.cpp` |
+| M6 Game-file setup flow (SAF) | 🟡 native half done | `filesystem_android.cpp` + Java picker + probe |
+| M7 Game-code integration (`libreeot_game.so` into the launcher) | ⬜ next | needs codegen outputs; pipeline ready (`codegen.yml`) |
 | Gameplay / rendering / audio / FPS | 🔒 blocked | needs game dump **and** hardware |
+
+### APK delivery (M2 evidence)
+
+- **CI run:** https://github.com/Nazatric/Edge-Of-Time-Android/actions/runs/38026377028
+  (APK job; the earlier run `38025918515` produced the identical verified APK)
+- **Workflow artifact:** `edge-of-time-android-debug-apk` on that run
+  (Actions → run → Artifacts; requires repo access; 30-day retention)
+- **Prerelease (permanent):** https://github.com/Nazatric/Edge-Of-Time-Android/releases/tag/v0.1.0-android-alpha
+  - asset: `app-debug.apk` — 41,009,575 bytes
+  - https://github.com/Nazatric/Edge-Of-Time-Android/releases/download/v0.1.0-android-alpha/app-debug.apk
+  - SHA-256: `78e1814ce1afaab0f1ddfa9c020ecbf5c9d825aa6fcb76b8bc3a4683685e834a`
+- **Verified in CI** (`aapt2` / `unzip` / `llvm-readelf` on the packaged libs):
+  `package: com.nazatric.edgeoftime.debug`, `versionName 0.1.0-android-alpha-debug`,
+  `targetSdkVersion 35`, `application-isGame`,
+  **`native-code: 'arm64-v8a'`**, and all three packaged libraries
+  (`librexruntime.so` 91 MB, `librexgpu-xenos.so` 52 MB, `libedgeoftime.so` 2.7 MB)
+  are **ELF64 AArch64 with 16 KB-aligned LOAD segments (0x4000)**.
+- **Not verified:** install/launch on a device (none attached to the agent),
+  rendering, audio, input, stability, FPS. The APK contains the real runtime
+  and the real renderer-initialization path, but **no recompiled game code** —
+  it reports the missing game files instead of faking gameplay.
+- Note: the dev sandbox cannot download workflow artifacts (the Azure blob
+  host is unreachable from it), so the runner publishes the release itself.
 
 ### Build output actually produced (run `37996301874`)
 
@@ -107,12 +132,21 @@ Items 5, 6, 7, 12 and 14 above are the missing pieces, now implemented in
 
 ## Next highest-priority action
 
-**M2: add the Gradle/AGP project** under `android/app/` that packages
-`librexruntime.so` + `librexgpu-xenos.so` into an `arm64-v8a` APK via
-`externalNativeBuild`, and produce a debug APK artifact in CI. That is buildable
-and verifiable without the game files, and gives a real installable artifact for
-device testing by someone who has a dump.
+**M2 is done** (APK + prerelease published — see "APK delivery" above).
 
-After that, in order: Android lifecycle + surface recreation (M3), touchscreen
-controls derived from `upstream/src/goliath/controller/pad_actions.h` (M5), and
-the Java half of the SAF setup flow (M6).
+Next, in order:
+
+1. **M7 — game-code integration.** The codegen pipeline is ready
+   (`tools/codegen/`, `.github/workflows/codegen.yml`, `docs/ANDROID_PORT_CODEGEN.md`).
+   With the user's game files supplied as CI secrets, the pipeline runs
+   `rexglue codegen` and builds the game for arm64-v8a. The remaining
+   integration work is turning upstream's `reeot` executable target into a
+   loadable `libreeot_game.so` for the launcher's GAME BOOTSTRAP HOOK, and
+   adding the Android branches to upstream's platform layer
+   (`patches/upstream/`) — the `game-android` CI job reports exactly what
+   still fails to compile.
+2. **M5 — touchscreen controls** derived from the real upstream mappings
+   (`upstream/src/goliath/controller/`), wired through the SDK window's
+   input listeners.
+3. **M3/M4 device validation** — install/launch on a real device or emulator
+   once one is available; nothing about rendering/audio/FPS is verified yet.

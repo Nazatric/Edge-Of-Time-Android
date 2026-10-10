@@ -1,0 +1,399 @@
+name: Game Codegen Pipeline
+
+# Two trigger modes:
+#  - push to tools/codegen/** (or this file): runs ONLY the host-tools
+#    regression job (no secrets, no game files).
+#  - workflow_dispatch (Actions tab): runs the full pipeline, gated on the
+#    GAME_* secrets being present. Game files enter CI only through secrets,
+#    are decoded onto the runner, used, and deleted. They are never committed.
+#
+# Full documentation: docs/ANDROID_PORT_CODEGEN.md and tools/codegen/README.md.
+
+on:
+  push:
+    branches: [ "arena/**" ]
+    paths:
+      - ".github/workflows/codegen.yml"
+      - "tools/codegen/**"
+      - "patches/**"
+      - "docs/ANDROID_PORT_CODEGEN.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  NDK_VERSION: "27.3.13750724"
+  ABI: "arm64-v8a"
+  API: "28"
+  ANDROID_HOME: /usr/local/lib/android/sdk
+  DISPATCH: ${{ github.event_name == 'workflow_dispatch' }}
+
+jobs:
+  host-tools:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build host tools (rexglue + XenosRecomp)
+        id: tools
+        continue-on-error: true
+        run: |
+          set +e
+          bash tools/codegen/build_host_tools.sh out/host-tools > host_tools.log 2>&1
+          rc=$?
+          echo "HOST_TOOLS_EXIT=$rc" | tee -a host_tools.log
+          echo "tools_exit=$rc" >> "$GITHUB_OUTPUT"
+
+      - name: Upload host tools artifact
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: codegen-host-tools
+          path: |
+            out/host-tools/rexglue/rexglue
+            out/host-tools/xenosrecomp/XenosRecomp
+          retention-days: 7
+
+      - name: Gate
+        if: always()
+        run: |
+          if [ "${{ steps.tools.outputs.tools_exit }}" != "0" ]; then
+            echo "host-tools build failed"; exit 1
+          fi
+
+      - name: Report to log channel
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### Codegen host-tools — run ${{ github.run_id }}"
+            echo "#### result"
+            echo '```'
+            grep -E "HOST_TOOLS_EXIT|error:|FAILED" host_tools.log 2>/dev/null | head -40 || echo "(no errors matched)"
+            echo '```'
+            echo "#### tail"
+            echo '```'
+            tail -c 4000 host_tools.log 2>/dev/null || echo "(no log)"
+            echo '```'
+          } > body.md
+          gh issue comment 1 --repo ${{ github.repository }} --body-file body.md
+
+  codegen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    needs: host-tools
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      && needs.host-tools.outputs.tools_exit == '0'
+      && secrets.GAME_DEFAULT_XEX_B64 != ''
+      && secrets.GAME_GAMELOGIC_DLL_B64 != ''
+    outputs:
+      codegen_exit: ${{ steps.cg.outputs.codegen_exit }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Download host tools
+        uses: actions/download-artifact@v4
+        with:
+          name: codegen-host-tools
+          path: out/host-tools
+
+      - name: Decode game files from secrets
+        env:
+          GAME_DEFAULT_XEX_B64: ${{ secrets.GAME_DEFAULT_XEX_B64 }}
+          GAME_GAMELOGIC_DLL_B64: ${{ secrets.GAME_GAMELOGIC_DLL_B64 }}
+        run: |
+          set -e
+          mkdir -p upstream/assets/Data
+          echo "$GAME_DEFAULT_XEX_B64" | base64 -d > upstream/assets/Default.xex
+          echo "$GAME_GAMELOGIC_DLL_B64" | base64 -d > upstream/assets/Data/GameLogic.dll
+          ls -la upstream/assets/Default.xex upstream/assets/Data/GameLogic.dll
+          # Sanity: XEX magic is 'XEX2'.
+          head -c 4 upstream/assets/Default.xex | grep -q "XEX2" \
+            && echo "Default.xex magic OK (XEX2)" \
+            || echo "WARNING: Default.xex does not start with XEX2 magic"
+
+      - name: Run rexglue codegen
+        id: cg
+        continue-on-error: true
+        run: |
+          set +e
+          chmod +x out/host-tools/rexglue out/host-tools/XenosRecomp 2>/dev/null || true
+          (cd upstream && "$OLDPWD/out/host-tools/rexglue" codegen "$OLDPWD/upstream/reeot_manifest.toml") > codegen.log 2>&1
+          rc=$?
+          echo "CODEGEN_EXIT=$rc" | tee -a codegen.log
+          echo "codegen_exit=$rc" >> "$GITHUB_OUTPUT"
+          echo "--- verify outputs ---" | tee -a codegen.log
+          for f in generated/default/sources.cmake generated/default/reeot_init.h \
+                   generated/default/reeot_pch.h generated/default/codegen.build.stamp; do
+            if [ -f "upstream/$f" ]; then echo "OK   $f" | tee -a codegen.log; else echo "MISS $f" | tee -a codegen.log; fi
+          done
+          ls upstream/generated/gamelogic 2>/dev/null | head -5 | tee -a codegen.log
+
+      - name: Upload generated game code artifact
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-game-code
+          path: upstream/generated/
+          retention-days: 7
+
+      - name: Gate
+        if: always()
+        run: |
+          if [ "${{ steps.cg.outputs.codegen_exit }}" != "0" ]; then
+            echo "codegen failed"; exit 1
+          fi
+          for f in upstream/generated/default/sources.cmake upstream/generated/default/reeot_init.h; do
+            [ -f "$f" ] || { echo "missing $f"; exit 1; }
+          done
+          echo "codegen OK"
+
+      - name: Report to log channel
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### Codegen (game files) — run ${{ github.run_id }}"
+            echo "#### result"
+            echo '```'
+            tail -c 5000 codegen.log 2>/dev/null || echo "(no log)"
+            echo '```'
+          } > body.md
+          gh issue comment 1 --repo ${{ github.repository }} --body-file body.md
+
+      - name: Delete game files from the runner
+        if: always()
+        run: |
+          rm -f upstream/assets/Default.xex upstream/assets/Data/GameLogic.dll
+          echo "game files removed from runner workspace"
+
+  shader-cache:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    needs: host-tools
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      && needs.host-tools.outputs.tools_exit == '0'
+      && secrets.GAME_SHADER_DIR_B64 != ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Download host tools
+        uses: actions/download-artifact@v4
+        with:
+          name: codegen-host-tools
+          path: out/host-tools
+
+      - name: Decode shader containers from secret
+        env:
+          GAME_SHADER_DIR_B64: ${{ secrets.GAME_SHADER_DIR_B64 }}
+        run: |
+          set -e
+          mkdir -p upstream/assets/shaders
+          echo "$GAME_SHADER_DIR_B64" | base64 -d | tar xz -C upstream/assets/shaders
+          echo "shader containers: $(find upstream/assets/shaders -type f | wc -l) files"
+
+      - name: Generate shader cache with XenosRecomp
+        id: sc
+        continue-on-error: true
+        run: |
+          set +e
+          chmod +x out/host-tools/XenosRecomp 2>/dev/null || true
+          # ~10 minutes: XenosRecomp scans every container and recompiles.
+          out/host-tools/XenosRecomp upstream/assets/shaders upstream/generated/shader_cache.cpp \
+              upstream/thirdparty/XenosRecomp/XenosRecomp/shader_common.h > shader_cache.log 2>&1
+          rc=$?
+          echo "SHADER_CACHE_EXIT=$rc" | tee -a shader_cache.log
+          echo "sc_exit=$rc" >> "$GITHUB_OUTPUT"
+          ls -la upstream/generated/shader_cache.cpp 2>/dev/null | tee -a shader_cache.log
+
+      - name: Upload shader cache artifact
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-shader-cache
+          path: upstream/generated/shader_cache.cpp
+          retention-days: 7
+
+      - name: Report to log channel
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### Shader cache — run ${{ github.run_id }}"
+            echo "#### result"
+            echo '```'
+            grep -E "SHADER_CACHE_EXIT|error|Error" shader_cache.log 2>/dev/null | head -20 || true
+            tail -c 3000 shader_cache.log 2>/dev/null || echo "(no log)"
+            echo '```'
+          } > body.md
+          gh issue comment 1 --repo ${{ github.repository }} --body-file body.md
+
+      - name: Delete shader containers from the runner
+        if: always()
+        run: |
+          rm -rf upstream/assets/shaders
+          echo "shader containers removed from runner workspace"
+
+  game-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    needs: [ host-tools, codegen ]
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      && needs.codegen.outputs.codegen_exit == '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Download host tools + generated code
+        uses: actions/download-artifact@v4
+        with:
+          name: codegen-host-tools
+          path: out/host-tools
+
+      - name: Restore generated game code
+        run: |
+          # The codegen job's artifact holds upstream/generated/.
+          # Re-run codegen here from the secrets instead of trusting artifacts
+          # across jobs: identical inputs, and the game files never leave the
+          # runner between jobs. (Artifacts would work too; secrets are simpler.)
+          echo "generated code will be reproduced from secrets below"
+
+      - name: Decode game files from secrets
+        env:
+          GAME_DEFAULT_XEX_B64: ${{ secrets.GAME_DEFAULT_XEX_B64 }}
+          GAME_GAMELOGIC_DLL_B64: ${{ secrets.GAME_GAMELOGIC_DLL_B64 }}
+        run: |
+          set -e
+          mkdir -p upstream/assets/Data
+          echo "$GAME_DEFAULT_XEX_B64" | base64 -d > upstream/assets/Default.xex
+          echo "$GAME_GAMELOGIC_DLL_B64" | base64 -d > upstream/assets/Data/GameLogic.dll
+          chmod +x out/host-tools/rexglue 2>/dev/null || true
+          (cd upstream && "$OLDPWD/out/host-tools/rexglue" codegen "$OLDPWD/upstream/reeot_manifest.toml") \
+              > codegen.log 2>&1
+          echo "CODEGEN_EXIT=$?"
+          test -f upstream/generated/default/sources.cmake
+
+      - name: Apply Android patches (SDK + upstream)
+        run: |
+          ./tools/ci/apply_patches.sh thirdparty/rexglue-sdk patches/rexglue-sdk
+          ./tools/ci/apply_patches.sh upstream patches/upstream || \
+            echo "(no upstream patches yet)"
+
+      - name: Configure the game for Android arm64
+        id: cfg
+        continue-on-error: true
+        run: |
+          NDK="$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"
+          LINK16K="-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384"
+          # Host dxc (x64) for the UI shader compile steps: the vendored dxc-bin
+          # picks arm64 binaries when cross-compiling, which cannot run here.
+          DXC_BIN="$PWD/upstream/thirdparty/XenosRecomp/thirdparty/dxc-bin"
+          REEOT_DXC="LD_LIBRARY_PATH=$DXC_BIN/lib/x64 $DXC_BIN/bin/x64/dxc-linux"
+          set +e
+          cmake -S upstream -B out/android-game -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI="$ABI" \
+            -DANDROID_PLATFORM="android-$API" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DREXSDK_DIR="$PWD/thirdparty/rexglue-sdk" \
+            -DREEOT_DXC="$REEOT_DXC" \
+            -DCMAKE_CXX_FLAGS="-fexperimental-library" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fexperimental-library $LINK16K" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-fexperimental-library $LINK16K" \
+            > configure.log 2>&1
+          rc=$?
+          echo "CONFIGURE_EXIT=$rc" | tee -a configure.log
+          echo "cfg_exit=$rc" >> "$GITHUB_OUTPUT"
+
+      - name: Build the game for arm64-v8a
+        id: build
+        continue-on-error: true
+        run: |
+          set +e
+          if [ -d out/android-game ]; then
+            # -k 0: collect every distinct error in one report.
+            cmake --build out/android-game --parallel 2 --target reeot -- -k 0 > build.log 2>&1
+            rc=$?
+            echo "BUILD_EXIT=$rc" | tee -a build.log
+            echo "build_exit=$rc" >> "$GITHUB_OUTPUT"
+          else
+            echo "configure failed; nothing to build" > build.log
+            echo "build_exit=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Collect produced game libraries
+        if: always()
+        continue-on-error: true
+        run: |
+          find out/android-game -name '*.so' 2>/dev/null | head -20 > game_libs.txt || true
+          cat game_libs.txt
+          if [ -s game_libs.txt ]; then
+            mkdir -p game-libs/arm64-v8a
+            while read -r so; do cp "$so" game-libs/arm64-v8a/ 2>/dev/null || true; done < game_libs.txt
+          fi
+
+      - name: Upload game libraries artifact
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-game-libs
+          path: game-libs/arm64-v8a/*.so
+          retention-days: 7
+
+      - name: Report to log channel
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### Game Android build — run ${{ github.run_id }}"
+            echo "configure: ${{ steps.cfg.outputs.cfg_exit }}, build: ${{ steps.build.outputs.build_exit }}"
+            echo "#### game libraries"
+            echo '```'
+            cat game_libs.txt 2>/dev/null || echo "(none)"
+            echo '```'
+            echo "#### configure: errors"
+            echo '```'
+            grep -A10 "CMake Error" configure.log 2>/dev/null | head -60 || true
+            tail -c 3000 configure.log 2>/dev/null
+            echo '```'
+            echo "#### build: error lines"
+            echo '```'
+            grep -nE "error:|FAILED:|undefined reference|No such file" build.log 2>/dev/null | head -60 || echo "(no error lines matched)"
+            echo '```'
+            echo "#### build: FAILED blocks"
+            echo '```'
+            grep -A20 "FAILED:" build.log 2>/dev/null | head -120 || echo "(no FAILED blocks)"
+            echo '```'
+            echo "#### build: tail"
+            echo '```'
+            tail -c 6000 build.log 2>/dev/null
+            echo '```'
+          } > body.md
+          gh issue comment 1 --repo ${{ github.repository }} --body-file body.md
+
+      - name: Delete game files from the runner
+        if: always()
+        run: |
+          rm -f upstream/assets/Default.xex upstream/assets/Data/GameLogic.dll
+          echo "game files removed from runner workspace"
