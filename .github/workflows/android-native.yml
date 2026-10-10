@@ -495,6 +495,15 @@ jobs:
           echo "PROBE_EXIT=$rc" | tee -a probe_upstream.log
           echo "probe_exit=$rc" >> "$GITHUB_OUTPUT"
 
+      - name: Gate on probe results
+        if: always()
+        run: |
+          if [ "${{ steps.probe.outputs.probe_exit }}" != "0" ]; then
+            echo "upstream-android-probe: compile failures (see log channel)"
+            exit 1
+          fi
+          echo "upstream-android-probe: all sources compile for arm64-v8a"
+
       - name: Report to log channel
         if: always()
         env:

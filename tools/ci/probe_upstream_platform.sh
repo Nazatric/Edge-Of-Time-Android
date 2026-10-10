@@ -37,6 +37,17 @@ cat > "$GEN/core/build_info.h" <<'HDR'
 #define REEOT_BUILD_TIMESTAMP "00000000_0000"
 HDR
 
+# Stub the build-time-generated host shader headers (normally produced by
+# reeot_host_shader() via dxc). The real build compiles the HLSL with dxc; the
+# probe only checks that the C++ compiles, so 1-byte placeholder arrays with
+# the same symbol names (g_<stem>_spirv / g_<stem>_dxil) are sufficient.
+mkdir -p "$GEN/shaders"
+for hlsl in "$UP"/src/gpu/shaders/hlsl/*.hlsl; do
+    stem="$(basename "$hlsl" .hlsl)"
+    printf '#pragma once\nconst unsigned char g_%s_spirv[] = {0};\n' "$stem" > "$GEN/shaders/$stem.hlsl.spirv.h"
+    printf '#pragma once\nconst unsigned char g_%s_dxil[] = {0};\n' "$stem"  > "$GEN/shaders/$stem.hlsl.dxil.h"
+done
+
 INCLUDES=(
     -I"$UP/src"
     -I"$GEN"
@@ -50,6 +61,8 @@ INCLUDES=(
     -I"$UP/thirdparty/renderdoc"
     -I"$UP/thirdparty/XenosRecomp/thirdparty/smol-v/source"
     -I"$UP/thirdparty/XenosRecomp/XenosRecomp"
+    -I"$UP/thirdparty/plume/contrib/volk"
+    -I"$SDK/thirdparty/xxHash"
     -I"$PWD/android/rex_android/include"
 )
 # plume (Vulkan renderer interface) and imgui live in different places.
@@ -92,7 +105,7 @@ for src in $SOURCES; do
         pass=$((pass + 1))
     else
         echo "FAIL  $src"
-        head -8 "out/probe-$name.err" | sed 's/^/      /'
+        grep -m4 "error:" "out/probe-$name.err" | sed 's/^/      /'
         fail=$((fail + 1))
         failed_files+=("$src")
     fi
