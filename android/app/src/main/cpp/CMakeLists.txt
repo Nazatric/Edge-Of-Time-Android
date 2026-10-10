@@ -35,6 +35,7 @@ target_include_directories(edgeoftime PRIVATE
     "${REXGLUE_SDK_DIR}/thirdparty/fmt/include"
     "${REXGLUE_SDK_DIR}/thirdparty/simde"
     "${REXGLUE_SDK_DIR}/thirdparty/vulkan-headers/include"
+    "${REXGLUE_SDK_DIR}/thirdparty/renderdoc"
     "${REX_ANDROID_SUPPORT_INCLUDE}"
 )
 
