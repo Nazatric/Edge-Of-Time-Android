@@ -93,10 +93,11 @@ namespace detail { void NoSuchEmbeddedAsset(); }
 consteval EmbeddedAsset Embedded(std::string_view) { return {}; }
 }  // namespace eot
 HDR
-for pkg in port menu achievements icons suits; do
+for pkg in menu achievements icons suits; do
     cap="$(echo "$pkg" | sed 's/.*/\U&/')"
     printf '#pragma once\n#include "embedded.h"\nnamespace eot {\ninline EmbeddedAsset Embedded%sPackage() { return {}; }\n}  // namespace eot\n' "$cap" > "$GEN/embedded_${pkg}_package.h"
 done
+printf '#pragma once\n#include "embedded.h"\nnamespace eot {\ninline EmbeddedAsset EmbeddedPortPackage() { return {}; }\n}  // namespace eot\n' > "$GEN/embedded_package.h" 
 
 # The HUD aspect policy is generated from config/eot_hud_aspect.toml by a
 # committed Python script - run the real generator, no stub needed.
@@ -134,7 +135,6 @@ done
 FLAGS=(
     -std=c++23
     -fexperimental-library
-    -fno-char8_t
     -ffp-model=strict
     -DREX_HAS_VULKAN=1
     -DREEOT_VERSION_STRING='"0.0.0-probe"'

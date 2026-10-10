@@ -1,0 +1,41 @@
+diff --git a/src/platform/crash_handler.cpp b/src/platform/crash_handler.cpp
+index 46bc183..91fc656 100644
+--- a/src/platform/crash_handler.cpp
++++ b/src/platform/crash_handler.cpp
+@@ -28,6 +28,11 @@
+ #include <windows.h>
+ 
+ extern "C" IMAGE_DOS_HEADER __ImageBase;
++#elif defined(__ANDROID__)
++// Bionic has no execinfo.h backtrace(); unwind with libunwind instead.
++#include <dlfcn.h>
++#include <signal.h>
++#include <unwind.h>
+ #else
+ #include <dlfcn.h>
+ #include <execinfo.h>
+@@ -133,6 +138,24 @@ void LogBacktrace(u64 base) {
+     else
+       EOT_CRITICAL("    [{:>2}] {:#018x}  ({})", i, a, ForeignModuleAt(a));
+   }
++#elif defined(__ANDROID__)
++  struct FrameCollector {
++    void **frames;
++    int count;
++  };
++  auto CollectFrame = [](_Unwind_Context *ctx, void *arg) -> _Unwind_Reason_Code {
++    auto *c = static_cast<FrameCollector *>(arg);
++    if (c->count < 32) {
++      c->frames[c->count++] = reinterpret_cast<void *>(_Unwind_GetIP(ctx));
++    }
++    return _URC_NO_REASON;
++  };
++  void *frames[32] = {};
++  FrameCollector collector{frames, 0};
++  _Unwind_Backtrace(CollectFrame, &collector);
++  const int n = collector.count;
++  if (n <= 0)
++    return;
+ #else
+   void *frames[32] = {};
+   const int n = ::backtrace(frames, 32);
