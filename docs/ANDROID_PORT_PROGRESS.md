@@ -19,7 +19,7 @@ emulator is available to the agent. Every claim here is a *build-time* result.
 | M1a arm64 ELF verified + 16 KB page aligned | ✅ **done** | run `37996301874` (`LOAD align 0x4000`) |
 | M2 Gradle project producing an installable APK | ✅ **done** | runs `38025918515` + `38026377028` |
 | M2a APK verified (badging, arch, 16 KB, SHA-256) + prerelease published | ✅ **done** | see "APK delivery" below |
-| M2b Upstream game code compiles for arm64-v8a | ✅ **done** | probe run `38030105699`: **56 passed, 0 failed** |
+| M2b Upstream game code compiles for arm64-v8a | ✅ **done** | probe run `38058413832`: **57 passed, 0 failed** (incl. the touch driver) |
 | M3 Android lifecycle / surface recreation | 🟡 largely done | patches 0010/0011 + surface acquire/release; **device-untested** |
 | M5 Touchscreen controls (virtual XInput pad) | 🟡 implemented, **device-untested** | `patches/upstream/0004` (`touch_input.cpp`); registered in `ReeotApp::OnPreSetup` |
 | M7 Game as loadable `libreeot_game.so` + launcher hook | 🟡 implemented, build **needs game files** | `android/game/CMakeLists.txt`, patch 0003 (creator export), launcher `TryBootGame` |
@@ -36,9 +36,9 @@ emulator is available to the agent. Every claim here is a *build-time* result.
 - **Workflow artifact:** `edge-of-time-android-debug-apk` on that run
   (Actions → run → Artifacts; requires repo access; 30-day retention)
 - **Prerelease (permanent):** https://github.com/Nazatric/Edge-Of-Time-Android/releases/tag/v0.1.0-android-alpha
-  - asset: `app-debug.apk` — 41,009,575 bytes
+  - asset: `app-debug.apk` — 41,025,651 bytes
   - https://github.com/Nazatric/Edge-Of-Time-Android/releases/download/v0.1.0-android-alpha/app-debug.apk
-  - SHA-256: `78e1814ce1afaab0f1ddfa9c020ecbf5c9d825aa6fcb76b8bc3a4683685e834a`
+  - SHA-256: `c009923c22914e03057321dd469d08437a053597f02e6710c93c1d58c6ddc7d1`
 - **Verified in CI** (`aapt2` / `unzip` / `llvm-readelf` on the packaged libs):
   `package: com.nazatric.edgeoftime.debug`, `versionName 0.1.0-android-alpha-debug`,
   `targetSdkVersion 35`, `application-isGame`,
@@ -156,10 +156,11 @@ cross builds (`REEOT_HOST_REXGLUE/PKZTOOL/PKZPREP/XENOSRECOMP`).
 
 - `native-core`: SDK compiles+links arm64; app lib builds; artifacts listed;
   readelf arch + 16 KB alignment gate.
-- `upstream-android-probe`: **56/56** upstream sources compile for arm64-v8a
+- `upstream-android-probe`: **57/57** upstream sources compile for arm64-v8a
   (only `main.cpp`/`reeot_app.cpp` skipped — they need codegen output).
 - `game-android-configure`: `android/game` configures for arm64-v8a (validates
-  the game CMake + the patches/upstream series).
+  the game CMake + the patches/upstream series + the SDK's subdirectory
+  consumption path).
 - `apk`: real debug APK, aapt2 badging, packaged-lib arch/alignment, SHA-256,
   prerelease publish — all gated.
 
