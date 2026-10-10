@@ -43,6 +43,12 @@ index 0000000..f71f10d
 +#include <rex/input/input_driver.h>
 +#include <rex/system/xtypes.h>
 +
++// The X_STATUS/X_RESULT types live in namespace rex, and the X_ERROR_* /
++// X_STATUS_SUCCESS macros expand to those type names; pull the names into
++// scope so the macros resolve from eot::controller too.
++using rex::X_RESULT;
++using rex::X_STATUS;
++
 +namespace eot::controller {
 +namespace {
 +
