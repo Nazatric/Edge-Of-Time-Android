@@ -134,7 +134,7 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          ./tools/ci/build_app_native.sh > appbuild.log 2>&1
+          bash tools/ci/build_app_native.sh > appbuild.log 2>&1
           rc=$?
           echo "APP_BUILD_EXIT=$rc" | tee -a appbuild.log
           echo "app_exit=$rc" >> "$GITHUB_OUTPUT"
