@@ -94,7 +94,7 @@ consteval EmbeddedAsset Embedded(std::string_view) { return {}; }
 }  // namespace eot
 HDR
 for pkg in menu achievements icons suits; do
-    cap="$(echo "$pkg" | sed 's/.*/\U&/')"
+    cap="${pkg^}"   # capitalize the first letter only: menu -> Menu
     printf '#pragma once\n#include "embedded.h"\nnamespace eot {\ninline EmbeddedAsset Embedded%sPackage() { return {}; }\n}  // namespace eot\n' "$cap" > "$GEN/embedded_${pkg}_package.h"
 done
 printf '#pragma once\n#include "embedded.h"\nnamespace eot {\ninline EmbeddedAsset EmbeddedPortPackage() { return {}; }\n}  // namespace eot\n' > "$GEN/embedded_package.h"
