@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write   # create tags + upload release assets
   issues: write
 
 env:
@@ -370,6 +370,72 @@ jobs:
             exit 1
           fi
           echo "apk: APK produced: $(ls -la android/app/build/outputs/apk/debug/app-debug.apk)"
+
+      - name: Publish prerelease with the APK
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v0.1.0-android-alpha"
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          SHA="$(sha256sum "$APK" | cut -d' ' -f1)"
+          SIZE="$(stat -c%s "$APK")"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          NOTES="$(mktemp)"
+          cat > "$NOTES" <<EOF
+          ## What this is
+
+          The first Android build of the Spider-Man: Edge of Time recompilation
+          port. This is a **build-integrity alpha**: the APK is real, installable
+          and packages the complete arm64-v8a ReXGlue runtime, but **it cannot
+          run the game yet** - the recompiled game code is generated from the
+          user's own copy of the game (see \`docs/ANDROID_PORT_CODEGEN.md\`) and
+          is not present in this repository.
+
+          ## What is verified (by CI, run ${{ github.run_id }})
+
+          - ReXGlue SDK compiles and links for arm64-v8a (librexruntime.so,
+            librexgpu-xenos.so) with 16 KB page alignment.
+          - The app entry library (libedgeoftime.so) builds and links against
+            the SDK; it mirrors the real game boot sequence and presents through
+            the SDK's own Vulkan presenter.
+          - APK: \`$SIZE\` bytes, \`native-code: arm64-v8a\`, all three packaged
+            libraries are ELF64 AArch64 with 16 KB-aligned LOAD segments.
+          - SHA-256: \`$SHA\`
+
+          ## What is NOT verified
+
+          - Install/launch on a real device or emulator (no device attached to
+            the build agent). Rendering, audio, input, stability and performance
+            are untested. No FPS numbers are claimed.
+          - Gameplay: requires the user's own \`Default.xex\` +
+            \`Data/GameLogic.dll\` (title update applied) and the generated
+            shader cache.
+
+          ## Install
+
+          \`\`\`bash
+          adb install app-debug.apk
+          adb logcat -s EdgeOfTime EdgeOfTimeBridge SDL AndroidRuntime
+          \`\`\`
+
+          Full details: \`docs/ANDROID_PORT_PROGRESS.md\`,
+          \`docs/ANDROID_PORT_CODEGEN.md\`, \`docs/ANDROID_PORT_AUDIT.md\`.
+          Build log: $RUN_URL
+          EOF
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease \
+              --title "v0.1.0-android-alpha - Android build-integrity alpha" \
+              --notes-file "$NOTES"
+          else
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease \
+              --title "v0.1.0-android-alpha - Android build-integrity alpha" \
+              --notes-file "$NOTES"
+          fi
+          gh release upload "$TAG" "$APK" --repo "$GITHUB_REPOSITORY" --clobber
+          echo "RELEASE_URL=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.html_url')"
+          echo "published $TAG with $APK (sha256 $SHA)"
 
       - name: Report to log channel
         if: always()
