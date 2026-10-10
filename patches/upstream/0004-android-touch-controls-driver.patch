@@ -20,7 +20,7 @@ new file mode 100644
 index 0000000..f71f10d
 --- /dev/null
 +++ b/src/goliath/controller/touch_input.cpp
-@@ -0,0 +1,248 @@
+@@ -0,0 +1,254 @@
 +// goliath/controller/touch_input.cpp
 +// Copyright Rien Gupta <rgupta9@scu.edu>
 +// BSD 3-Clause
