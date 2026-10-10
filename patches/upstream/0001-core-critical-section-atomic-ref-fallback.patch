@@ -1,0 +1,35 @@
+diff --git a/src/core/critical_section.cpp b/src/core/critical_section.cpp
+index 9eba905..3985c5b 100644
+--- a/src/core/critical_section.cpp
++++ b/src/core/critical_section.cpp
+@@ -36,6 +36,7 @@ REX_HOOK_RAW(eot_WorkBuf_Unlock) {
+   eot::mem::store<uint32_t>(section + kRecursion, depth);
+   if (depth != 0)
+     return;
++#if defined(__cpp_lib_atomic_ref)
+   std::atomic_ref<uint32_t>(*owner).exchange(0, std::memory_order_seq_cst);
+   std::atomic_ref<uint32_t> count(*waiters);
+   uint32_t raw = count.load(std::memory_order_seq_cst);
+@@ -47,6 +48,22 @@ REX_HOOK_RAW(eot_WorkBuf_Unlock) {
+                                     std::memory_order_seq_cst))
+       break;
+   }
++#else
++  // libc++ without std::atomic_ref (Android NDK): the __atomic builtins lower
++  // to the same instructions on these host words.
++  __atomic_exchange_n(owner, 0, __ATOMIC_SEQ_CST);
++  uint32_t raw = __atomic_load_n(waiters, __ATOMIC_SEQ_CST);
++  for (;;) {
++    const int32_t n = static_cast<int32_t>(Raw(raw));
++    if (n <= 0)
++      return;
++    uint32_t expected = raw;
++    if (__atomic_compare_exchange_n(waiters, &expected, Raw(static_cast<uint32_t>(n - 1)),
++                                    /*weak=*/false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
++      break;
++    raw = expected;
++  }
++#endif
+   PPCContext call = ctx;
+   call.r3.u32 = eot::mem::load<uint32_t>(section + kSemaphore);
+   call.r4.u32 = 1;
