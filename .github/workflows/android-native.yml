@@ -460,3 +460,55 @@ jobs:
             echo '```'
           } > apk_body.md
           gh issue comment 1 --repo ${{ github.repository }} --body-file apk_body.md
+
+  # ---------------------------------------------------------------------------
+  # Compile-probe upstream's game sources for Android arm64 (no game files,
+  # no codegen, no device). Fast regression gate for the upstream Android
+  # platform work (patches/upstream/).
+  # ---------------------------------------------------------------------------
+  upstream-android-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Apply Android patches to SDK
+        run: ./tools/ci/apply_patches.sh thirdparty/rexglue-sdk patches/rexglue-sdk
+
+      - name: Apply Android patches to upstream
+        run: |
+          if compgen -G "patches/upstream/*.patch" > /dev/null; then
+            ./tools/ci/apply_patches.sh upstream patches/upstream
+          else
+            echo "(no upstream patches yet)"
+          fi
+
+      - name: Compile-probe upstream sources for arm64-v8a
+        id: probe
+        continue-on-error: true
+        run: |
+          set +e
+          bash tools/ci/probe_upstream_platform.sh > probe_upstream.log 2>&1
+          rc=$?
+          echo "PROBE_EXIT=$rc" | tee -a probe_upstream.log
+          echo "probe_exit=$rc" >> "$GITHUB_OUTPUT"
+
+      - name: Report to log channel
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### Upstream Android compile probe — run ${{ github.run_id }}"
+            echo "#### summary"
+            echo '```'
+            grep -E "^PASS|^FAIL|^SKIP|^MISS|compile probe:" probe_upstream.log 2>/dev/null || echo "(no log)"
+            echo '```'
+            echo "#### failure details"
+            echo '```'
+            grep -A8 "^FAIL" probe_upstream.log 2>/dev/null | head -120 || echo "(no failures)"
+            echo '```'
+          } > body.md
+          gh issue comment 1 --repo ${{ github.repository }} --body-file body.md
