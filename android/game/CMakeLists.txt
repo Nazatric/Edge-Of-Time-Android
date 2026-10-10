@@ -106,6 +106,19 @@ target_compile_options(reeot_game PRIVATE
     -DNDEBUG
 )
 
+# The SDK's macros read these in the CALLER's scope (directory scopes do not
+# propagate): rexglue_configure_target() needs REXGLUE_SHARE_DIR, and the SDK
+# build (via add_subdirectory above) needs the Android support dir.
+if(NOT REXGLUE_SHARE_DIR)
+    set(REXGLUE_SHARE_DIR "${REXGLUE_SDK_DIR}/src/ui")
+endif()
+if(NOT REX_ANDROID_SUPPORT_DIR)
+    set(REX_ANDROID_SUPPORT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../rex_android" CACHE PATH "" FORCE)
+endif()
+if(NOT REX_ANDROID_SUPPORT_INCLUDE)
+    set(REX_ANDROID_SUPPORT_INCLUDE "${REX_ANDROID_SUPPORT_DIR}/include" CACHE PATH "" FORCE)
+endif()
+
 # SDK wiring: links rex::runtime, applies the SDK target settings, and with
 # GPU_PLUGINS xenos links the XenosRecomp shader-translation plugin.
 rexglue_setup_target(reeot_game GPU_PLUGINS xenos)

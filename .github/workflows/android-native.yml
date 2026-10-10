@@ -101,6 +101,7 @@ jobs:
             -DREXGLUE_BUILD_TESTS=OFF \
             -DREXGLUE_ENABLE_TRACY=OFF \
             -DREX_ANDROID_SUPPORT_DIR="$PWD/android/rex_android" \
+            -DREX_ANDROID_SUPPORT_DIR="$PWD/android/rex_android" \
             -DREX_ANDROID_SUPPORT_INCLUDE="$PWD/android/rex_android/include" \
             -DCMAKE_CXX_FLAGS="-fexperimental-library" \
             -DCMAKE_EXE_LINKER_FLAGS="-fexperimental-library $LINK16K" \
@@ -557,6 +558,7 @@ jobs:
             -DREXGLUE_SDK_DIR="$PWD/thirdparty/rexglue-sdk" \
             -DUPSTREAM_DIR="$PWD/upstream" \
             -DREXGLUE_BUILD_DIR="$PWD/thirdparty/rexglue-sdk/out/linux-arm64" \
+            -DREX_ANDROID_SUPPORT_DIR="$PWD/android/rex_android" \
             -DREX_ANDROID_SUPPORT_INCLUDE="$PWD/android/rex_android/include" \
             -DREEOT_DXC="LD_LIBRARY_PATH=$DXC_BIN/lib/x64 $DXC_BIN/bin/x64/dxc-linux" \
             -DCMAKE_CXX_FLAGS="-fexperimental-library" \

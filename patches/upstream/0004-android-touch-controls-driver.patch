@@ -94,7 +94,7 @@ index 0000000..f71f10d
 +  TouchInputDriver() : rex::input::InputDriver(nullptr, 0) {}
 +  ~TouchInputDriver() override { SDL_RemoveEventWatch(WatchCallback, this); }
 +
-+  X_STATUS Setup() override {
++  rex::X_STATUS Setup() override {
 +    // The watch runs on the UI thread inside SDL's event loop, so the finger
 +    // map is only ever mutated there; GetDeviceState locks the same mutex.
 +    SDL_AddEventWatch(WatchCallback, this);
@@ -110,7 +110,7 @@ index 0000000..f71f10d
 +    out.push_back(info);
 +  }
 +
-+  X_RESULT GetDeviceState(rex::input::DeviceId id,
++  rex::X_RESULT GetDeviceState(rex::input::DeviceId id,
 +                          rex::input::X_INPUT_STATE* out_state) override {
 +    if (id != rex::input::DeviceId{1}) {
 +      return X_ERROR_DEVICE_NOT_CONNECTED;
@@ -200,7 +200,7 @@ index 0000000..f71f10d
 +    return X_ERROR_SUCCESS;
 +  }
 +
-+  X_RESULT GetDeviceCapabilities(rex::input::DeviceId id, uint32_t /*flags*/,
++  rex::X_RESULT GetDeviceCapabilities(rex::input::DeviceId id, uint32_t /*flags*/,
 +                                 rex::input::X_INPUT_CAPABILITIES* out_caps) override {
 +    if (id != rex::input::DeviceId{1}) {
 +      return X_ERROR_DEVICE_NOT_CONNECTED;
@@ -221,13 +221,13 @@ index 0000000..f71f10d
 +    return X_ERROR_SUCCESS;
 +  }
 +
-+  X_RESULT SetDeviceVibration(rex::input::DeviceId id,
++  rex::X_RESULT SetDeviceVibration(rex::input::DeviceId id,
 +                              rex::input::X_INPUT_VIBRATION* /*vibration*/) override {
 +    // No haptic device is associated with the virtual pad.
 +    return id == rex::input::DeviceId{1} ? X_ERROR_SUCCESS : X_ERROR_DEVICE_NOT_CONNECTED;
 +  }
 +
-+  X_RESULT GetDeviceKeystroke(rex::input::DeviceId id, uint32_t /*flags*/,
++  rex::X_RESULT GetDeviceKeystroke(rex::input::DeviceId id, uint32_t /*flags*/,
 +                              rex::input::X_INPUT_KEYSTROKE* /*out_keystroke*/) override {
 +    return id == rex::input::DeviceId{1} ? X_ERROR_EMPTY : X_ERROR_DEVICE_NOT_CONNECTED;
 +  }
