@@ -1,0 +1,78 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.nazatric.edgeoftime'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.nazatric.edgeoftime"
+        minSdk 28
+        targetSdk 35
+        versionCode 1
+        versionName "0.1.0-android-alpha"
+
+        // The recompiled game code is not part of this repository (it is
+        // generated from the user's own game files). The APK therefore ships
+        // the ReXGlue runtime + shader translator + the Android launcher, and
+        // reports the missing game files at runtime instead of crashing.
+        buildConfigField "String", "GIT_SHA", "\"${gitSha()}\""
+    }
+
+    // Native libraries are prebuilt for arm64-v8a by the SDK CI job and staged
+    // into src/main/jniLibs/arm64-v8a/ before this build runs.
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ['src/main/jniLibs']
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    // No externalNativeBuild here: the arm64-v8a libraries are prebuilt by the
+    // SDK CI job and staged into src/main/jniLibs/arm64-v8a/. The game targets
+    // 64-bit ARM only (arm64-v8a); no x86 emulator libraries are shipped.
+
+    packagingOptions {
+        // Keep the default (legacy) packaging: libraries are stored compressed
+        // and extracted to nativeLibraryDir on install. This is the most
+        // compatible option across devices, including 16 KB-page devices,
+        // because the extracted .so files are 16 KB-aligned ELFs (the SDK build
+        // passes -Wl,-z,max-page-size=16384) and are not loaded directly from
+        // the APK.
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+}
+
+// Short git SHA for the about/status screen. Falls back to "unknown" when git
+// is unavailable (e.g. building from an exported source tree in CI).
+def gitSha() {
+    try {
+        return providers.exec {
+            commandLine 'git', 'rev-parse', '--short', 'HEAD'
+        }.standardOutput.asText.get().trim()
+    } catch (Exception ignored) {
+        return "unknown"
+    }
+}

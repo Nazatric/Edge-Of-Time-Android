@@ -16,9 +16,9 @@
  * @license BSD 3-Clause License (matches the ReXGlue SDK it plugs into)
  */
 
-#include <rex/ui/surface.h>
+#include <android/native_window.h>
 
-struct ANativeWindow;
+#include <rex/ui/surface.h>
 
 namespace rex {
 namespace ui {
@@ -28,10 +28,24 @@ namespace ui {
 /// The window is owned by the Activity/SurfaceView (or by SDL), not by this
 /// object. Android destroys it on surfaceDestroyed(), so the owner must tear
 /// the surface down and recreate it on surfaceCreated() rather than caching it
-/// across the lifecycle.
+/// across the lifecycle. To make that hand-off safe, the constructor acquires
+/// its own reference and the destructor releases it: the ANativeWindow stays
+/// valid for the lifetime of this object even if the platform drops its
+/// reference in between (for example while the window is being recreated).
 class AndroidNativeWindowSurface final : public Surface {
  public:
-  explicit AndroidNativeWindowSurface(ANativeWindow* window) : window_(window) {}
+  explicit AndroidNativeWindowSurface(ANativeWindow* window) : window_(window) {
+    if (window_) {
+      ANativeWindow_acquire(window_);
+    }
+  }
+  ~AndroidNativeWindowSurface() override {
+    if (window_) {
+      ANativeWindow_release(window_);
+    }
+  }
+  AndroidNativeWindowSurface(const AndroidNativeWindowSurface&) = delete;
+  AndroidNativeWindowSurface& operator=(const AndroidNativeWindowSurface&) = delete;
 
   TypeIndex GetType() const override { return kTypeIndex_AndroidNativeWindow; }
 
@@ -41,7 +55,15 @@ class AndroidNativeWindowSurface final : public Surface {
   /// after a rotation or an app switch). Passing nullptr marks the surface as
   /// not currently presentable; GetSize() then reports false and the presenter
   /// skips presentation instead of submitting to a dead swapchain.
-  void set_window(ANativeWindow* window) { window_ = window; }
+  void set_window(ANativeWindow* window) {
+    if (window) {
+      ANativeWindow_acquire(window);
+    }
+    if (window_) {
+      ANativeWindow_release(window_);
+    }
+    window_ = window;
+  }
 
  protected:
   bool GetSizeImpl(uint32_t& width_out, uint32_t& height_out) const override;

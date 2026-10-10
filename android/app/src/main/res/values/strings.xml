@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Edge of Time</string>
+    <string name="status_booting">Starting…</string>
+    <string name="status_no_game_files">Game files required. Use the in-app button to select the folder containing your copy of the game.</string>
+    <string name="action_select_game_folder">Select game folder</string>
+    <string name="action_quit">Quit</string>
+</resources>

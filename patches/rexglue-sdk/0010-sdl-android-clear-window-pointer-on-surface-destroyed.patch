@@ -1,0 +1,18 @@
+diff --git a/thirdparty/sdl3/src/core/android/SDL_android.c b/thirdparty/sdl3/src/core/android/SDL_android.c
+index fa559484f..de4af15e8 100644
+--- a/thirdparty/sdl3/src/core/android/SDL_android.c
++++ b/thirdparty/sdl3/src/core/android/SDL_android.c
+@@ -1317,6 +1317,13 @@ retry:
+             data->native_window = NULL;
+         }
+ 
++        // Clear the window property as well: it must not keep referencing the
++        // released ANativeWindow until the next surfaceCreated() re-sets it.
++        // Consumers (such as a Vulkan presenter reading the property to build
++        // a VkSurfaceKHR) would otherwise dereference a dangling pointer.
++        SDL_SetPointerProperty(SDL_GetWindowProperties(Android_Window),
++                               SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, NULL);
++
+         // GL Context handling is done in the event loop because this function is run from the Java thread
+     }
+ 

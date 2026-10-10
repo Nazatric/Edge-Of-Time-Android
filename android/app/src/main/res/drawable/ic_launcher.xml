@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Simple vector launcher icon (spider-silhouette-ish mark). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#FF101018"
+        android:pathData="M0,0h48v48h-48z" />
+    <path
+        android:fillColor="#FFE8862D"
+        android:pathData="M24,6 L30,18 L42,18 L32,26 L36,38 L24,31 L12,38 L16,26 L6,18 L18,18 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M24,14 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
+</vector>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="status_background">#B0000000</color>
+    <color name="status_text">#FFFFFFFF</color>
+    <color name="status_accent">#FFE8862D</color>
+</resources>

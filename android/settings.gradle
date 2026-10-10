@@ -1,0 +1,25 @@
+// Edge of Time - Android application project.
+//
+// The native libraries are built by the ReXGlue SDK CI job (see
+// .github/workflows/android-native.yml) and dropped into
+// app/src/main/jniLibs/arm64-v8a/ before this Gradle build runs. This project
+// itself contains no native build steps: AGP only packages the prebuilt
+// arm64-v8a shared libraries into the APK.
+
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "edge-of-time-android"
+include(":app")

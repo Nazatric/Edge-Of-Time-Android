@@ -1,0 +1,50 @@
+# Build outputs (CI builds in out/; the SDK builds next to its source).
+out/
+thirdparty/rexglue-sdk/out/
+thirdparty/rexglue-sdk/build/
+build/
+
+# Gradle / Android build outputs.
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/app/src/main/jniLibs/
+*.apk
+*.ap_
+*.aab
+
+# Gradle wrapper jar is not committed (CI installs Gradle via setup-gradle).
+android/gradle/wrapper/gradle-wrapper.jar
+android/gradlew
+android/gradlew.bat
+
+# CI scratch files.
+configure.log
+build.log
+appbuild.log
+apkbuild.log
+probe.txt
+probe.err
+jt.err
+artifacts.txt
+apk_verify.txt
+body.md
+apk_body.md
+cfg.clean
+bld.clean
+app.clean
+native-libs/
+
+# Never commit game files, dumps, or keys (also enforced by upstream's
+# assets/.gitignore inside the submodule).
+*.xex
+*.dll
+assets/
+*.pem
+*.keystore
+*.jks
+
+# Python.
+__pycache__/
+*.pyc

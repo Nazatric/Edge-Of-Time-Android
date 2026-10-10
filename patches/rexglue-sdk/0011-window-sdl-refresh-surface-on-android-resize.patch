@@ -1,0 +1,24 @@
+--- a/src/ui/window_sdl.cpp
++++ b/src/ui/window_sdl.cpp
+@@ -456,8 +456,21 @@
+     case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+       OnActualSizeUpdate(uint32_t(event.window.data1), uint32_t(event.window.data2),
+                          destruction_receiver);
++#if REX_PLATFORM_ANDROID
++      // The ANativeWindow may have just been (re)created (surfaceCreated after
++      // a rotation or an app switch): rebuild the presenter surface so the
++      // presenter reconnects to the current window instead of the stale one.
++      OnSurfaceChanged(true);
++#endif
+       break;
+     case SDL_EVENT_WINDOW_RESIZED: {
++#if REX_PLATFORM_ANDROID
++      // surfaceChanged() on the Java side reports the new resolution through
++      // this event; the ANativeWindow property is already up to date here, so
++      // this is the point where a (re)created native window becomes visible to
++      // the presenter surface.
++      OnSurfaceChanged(true);
++#endif
+       // Track the user-driven size as the desired size for the normal state
+       // only (mirrors the Win32 WM_SIZE handling).
+       SDL_WindowFlags flags = SDL_GetWindowFlags(sdl_window_);

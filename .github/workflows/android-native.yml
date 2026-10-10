@@ -21,6 +21,7 @@ env:
   NDK_VERSION: "27.3.13750724"
   ABI: "arm64-v8a"
   API: "28"
+  ANDROID_HOME: /usr/local/lib/android/sdk
 
 jobs:
   native-core:
@@ -30,6 +31,9 @@ jobs:
       fail-fast: false
       matrix:
         ndk: [ "27.3.13750724" ]
+    outputs:
+      sdk_exit: ${{ steps.sdkbuild.outputs.sdk_exit }}
+      app_exit: ${{ steps.appbuild.outputs.app_exit }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -106,6 +110,7 @@ jobs:
           ls -la configure.log
 
       - name: Build
+        id: sdkbuild
         continue-on-error: true
         run: |
           set +e
@@ -115,11 +120,25 @@ jobs:
             # peaks well above 3 GB/process and the runner was being OOM-killed
             # (ninja reported "subcommand failed" with no diagnostic at all).
             cmake --build out/android --parallel 2 -- -k 0 > build.log 2>&1
-            echo "BUILD_EXIT=$?" | tee -a build.log
+            rc=$?
+            echo "BUILD_EXIT=$rc" | tee -a build.log
+            echo "sdk_exit=$rc" >> "$GITHUB_OUTPUT"
           else
             echo "configure did not produce out/android; nothing to build" > build.log
+            echo "sdk_exit=1" >> "$GITHUB_OUTPUT"
           fi
           ls -la build.log
+
+      - name: Build app native library (libedgeoftime.so)
+        id: appbuild
+        continue-on-error: true
+        run: |
+          set +e
+          ./tools/ci/build_app_native.sh > appbuild.log 2>&1
+          rc=$?
+          echo "APP_BUILD_EXIT=$rc" | tee -a appbuild.log
+          echo "app_exit=$rc" >> "$GITHUB_OUTPUT"
+          ls -la appbuild.log
 
       - name: Inspect produced binaries
         if: always()
@@ -129,13 +148,13 @@ jobs:
           READELF="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
           {
             echo "--- shared libraries / archives produced ---"
-            find out/android thirdparty/rexglue-sdk/out -name '*.so' -o -name '*.a' 2>/dev/null \
+            find out/android thirdparty/rexglue-sdk/out out/android-app -name '*.so' -o -name '*.a' 2>/dev/null \
               | head -40 | while read -r f; do
                   printf '%10s  %s\n' "$(stat -c%s "$f")" "$f"
                 done
             echo ""
             echo "--- arch + 16 KB page alignment (Android 15 requirement) ---"
-            find out/android thirdparty/rexglue-sdk/out -name '*.so' 2>/dev/null | head -10 \
+            find out/android thirdparty/rexglue-sdk/out out/android-app -name '*.so' 2>/dev/null | head -10 \
               | while read -r so; do
                   echo "== $so"
                   "$READELF" -h "$so" 2>/dev/null | grep -E "Machine|Class" || true
@@ -145,6 +164,33 @@ jobs:
           } > artifacts.txt 2>&1
           cat artifacts.txt
 
+      - name: Stage native libraries for the APK job
+        if: always()
+        run: |
+          mkdir -p native-libs/arm64-v8a
+          for so in librexruntime.so librexgpu-xenos.so; do
+            f=$(find out thirdparty/rexglue-sdk/out -name "$so" 2>/dev/null | head -1)
+            if [ -n "$f" ]; then
+              cp "$f" native-libs/arm64-v8a/
+            else
+              echo "missing $so"
+            fi
+          done
+          if [ -f out/android-app/libedgeoftime.so ]; then
+            cp out/android-app/libedgeoftime.so native-libs/arm64-v8a/
+          else
+            echo "missing libedgeoftime.so"
+          fi
+          ls -la native-libs/arm64-v8a/
+
+      - name: Upload native libraries artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arm64-native-libs
+          path: native-libs/arm64-v8a/*.so
+          retention-days: 14
+
       - name: Report to log channel
         if: always()
         env:
@@ -152,9 +198,12 @@ jobs:
         run: |
           python3 tools/ci/strip_noise.py configure.log > cfg.clean 2>/dev/null || echo "(no configure.log)" > cfg.clean
           python3 tools/ci/strip_noise.py build.log     > bld.clean 2>/dev/null || echo "(no build.log)" > bld.clean
+          python3 tools/ci/strip_noise.py appbuild.log  > app.clean 2>/dev/null || echo "(no appbuild.log)" > app.clean
           {
             echo "### Android Native Core — NDK \`${{ matrix.ndk }}\` — run ${{ github.run_id }}"
             echo "NDK=${{ matrix.ndk }} ABI=${ABI} API=${API}"
+            echo ""
+            echo "**Exits:** SDK build \`${{ steps.sdkbuild.outputs.sdk_exit }}\`, app lib \`${{ steps.appbuild.outputs.app_exit }}\`"
             echo ""
             echo "#### artifacts"
             echo '```'
@@ -162,14 +211,7 @@ jobs:
             echo '```'
             echo "#### libc++ probe"
             echo '```'
-            if "$CXX" -std=c++23 -fexperimental-library \
-               -c tools/ci/jthread_probe.cpp -o /dev/null 2>jt.err; then
-            echo "JTHREAD_WITH_EXPERIMENTAL=PASS" >> probe.txt
-          else
-            echo "JTHREAD_WITH_EXPERIMENTAL=FAIL" >> probe.txt
-            head -15 jt.err >> probe.txt
-          fi
-          cat probe.txt 2>/dev/null || echo "(no probe)"
+            cat probe.txt 2>/dev/null || echo "(no probe)"
             echo '```'
             echo "#### configure: CMake errors"
             echo '```'
@@ -187,6 +229,14 @@ jobs:
             echo '```'
             grep -A25 "FAILED:" bld.clean | head -150 || echo "(no FAILED blocks)"
             echo '```'
+            echo "#### app lib: error lines"
+            echo '```'
+            grep -nE "error:|FAILED:|undefined reference|No such file" app.clean | head -60 || echo "(no error lines matched)"
+            echo '```'
+            echo "#### app lib: tail"
+            echo '```'
+            tail -c 6000 app.clean
+            echo '```'
             echo "#### memory"
             echo '```'
             free -m || true
@@ -198,3 +248,124 @@ jobs:
             echo '```'
           } > body.md
           gh issue comment 1 --repo ${{ github.repository }} --body-file body.md
+
+  # ---------------------------------------------------------------------------
+  # M2: package the prebuilt arm64-v8a libraries into a real installable APK.
+  # ---------------------------------------------------------------------------
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: native-core
+    if: needs.native-core.outputs.sdk_exit == '0' && needs.native-core.outputs.app_exit == '0'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download native libraries
+        uses: actions/download-artifact@v4
+        with:
+          name: arm64-native-libs
+          path: native-libs
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android SDK components
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKMANAGER" ] || SDKMANAGER="$(command -v sdkmanager)"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.10.2
+
+      - name: Stage native libraries into the app
+        run: |
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          cp native-libs/arm64-v8a/*.so android/app/src/main/jniLibs/arm64-v8a/
+          ls -la android/app/src/main/jniLibs/arm64-v8a/
+
+      - name: Build debug APK
+        id: apkbuild
+        continue-on-error: true
+        working-directory: android
+        run: |
+          set +e
+          gradle --no-daemon :app:assembleDebug > ../apkbuild.log 2>&1
+          rc=$?
+          echo "APK_BUILD_EXIT=$rc" | tee -a ../apkbuild.log
+          echo "apk_exit=$rc" >> "$GITHUB_OUTPUT"
+
+      - name: Verify APK contents
+        if: always()
+        continue-on-error: true
+        run: |
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          READELF="$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          {
+            echo "APK_BUILD_EXIT=${{ steps.apkbuild.outputs.apk_exit }}"
+            if [ ! -f "$APK" ]; then
+              echo "APK MISSING: $APK"
+              exit 0
+            fi
+            echo "== APK file =="
+            ls -la "$APK"
+            echo "SHA256: $(sha256sum "$APK" | cut -d' ' -f1)"
+            echo ""
+            echo "== aapt2 badging (key fields) =="
+            "$BT/aapt2" dump badging "$APK" 2>/dev/null \
+              | grep -E "^package:|^sdkVersion|^targetSdkVersion|^native-code|application-label:|launchable-activity|application-isGame" || true
+            echo ""
+            echo "== packaged native libraries =="
+            unzip -l "$APK" | grep -E "lib/arm64-v8a|\.so" || true
+            echo ""
+            echo "== packaged library arch + 16 KB alignment =="
+            rm -rf /tmp/apklibs && mkdir -p /tmp/apklibs
+            unzip -q "$APK" "lib/arm64-v8a/*" -d /tmp/apklibs 2>/dev/null || true
+            for so in /tmp/apklibs/lib/arm64-v8a/*.so; do
+              [ -e "$so" ] || continue
+              echo "-- $(basename "$so")"
+              "$READELF" -h "$so" 2>/dev/null | grep -E "Class:|Machine:" || true
+              "$READELF" -l "$so" 2>/dev/null | awk '/LOAD/{print "   LOAD align " $NF}' | sort -u
+              "$READELF" -d "$so" 2>/dev/null | grep NEEDED | sed 's/^/   /' || true
+            done
+          } > apk_verify.txt 2>&1
+          cat apk_verify.txt
+
+      - name: Upload APK artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: edge-of-time-android-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      - name: Report to log channel
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### Android APK — run ${{ github.run_id }}"
+            echo "Job URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ""
+            echo "#### APK verification"
+            echo '```'
+            cat apk_verify.txt 2>/dev/null || echo "(no verification output)"
+            echo '```'
+            echo "#### gradle: error lines"
+            echo '```'
+            grep -nE "error:|FAILED|What went wrong|Execution failed|Could not|No such" apkbuild.log 2>/dev/null | head -60 || echo "(no error lines matched)"
+            echo '```'
+            echo "#### gradle: tail"
+            echo '```'
+            tail -c 8000 apkbuild.log 2>/dev/null || echo "(no gradle log)"
+            echo '```'
+          } > apk_body.md
+          gh issue comment 1 --repo ${{ github.repository }} --body-file apk_body.md

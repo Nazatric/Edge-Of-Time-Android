@@ -27,6 +27,12 @@ namespace rex {
 namespace filesystem {
 namespace {
 
+/// Returns true if the given source string is a Storage Access Framework
+/// content:// URI rather than a plain filesystem path.
+bool LooksLikeContentUri(const std::string_view source) {
+  return source.starts_with("content://");
+}
+
 /// RAII for a local JNI reference.
 class LocalRef {
  public:
@@ -72,6 +78,18 @@ const char* NormalizeMode(const char* mode) {
 }
 
 }  // namespace
+
+bool IsAndroidContentUri(const std::string_view source) { return LooksLikeContentUri(source); }
+
+void AndroidInitialize() {
+  // The filesystem layer itself needs no global state; the JNI registration it
+  // relies on is performed by the application entry point via
+  // rex::android::RegisterJni(). This hook exists so platform bring-up has a
+  // single, ordered call site (mirroring rex::memory::AndroidInitialize and
+  // rex::thread::AndroidInitialize).
+}
+
+void AndroidShutdown() {}
 
 int OpenAndroidContentFileDescriptor(const std::string_view uri, const char* mode) {
   JNIEnv* env = rex::android::GetThreadEnv();
