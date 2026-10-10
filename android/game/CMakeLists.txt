@@ -33,6 +33,12 @@ if(NOT REXGLUE_SDK_DIR OR NOT UPSTREAM_DIR)
     message(FATAL_ERROR "REXGLUE_SDK_DIR and UPSTREAM_DIR are required")
 endif()
 
+# Upstream's generated/rexglue.cmake locates the SDK via REXSDK_DIR; forward
+# our REXGLUE_SDK_DIR argument to it.
+if(NOT REXSDK_DIR)
+    set(REXSDK_DIR "${REXGLUE_SDK_DIR}" CACHE PATH "Path to rexglue-sdk source tree" FORCE)
+endif()
+
 # Upstream's full project: pkz packages, embedded assets, codegen wiring,
 # rex::runtime / rex::rexglue targets, rexglue_setup_target() macro.
 add_subdirectory("${UPSTREAM_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/upstream")

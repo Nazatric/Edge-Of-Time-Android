@@ -52,31 +52,31 @@ index 0000000..f71f10d
 +  float x;
 +  float y;
 +  float radius;    // activation radius (fraction of the window width)
-+  uint16_t button; // X_INPUT_GAMEPAD_* bit (0 for the trigger zones)
++  uint16_t button; // rex::input::X_INPUT_GAMEPAD_* bit (0 for the trigger zones)
 +  bool is_trigger;
 +  bool trigger_left; // true: LT, false: RT
 +};
 +
 +constexpr ButtonZone kButtonZones[] = {
 +    // D-pad (menus) - left part of the right half.
-+    {0.52f, 0.50f, 0.11f, X_INPUT_GAMEPAD_DPAD_UP, false, false},
-+    {0.52f, 0.76f, 0.11f, X_INPUT_GAMEPAD_DPAD_DOWN, false, false},
-+    {0.40f, 0.63f, 0.11f, X_INPUT_GAMEPAD_DPAD_LEFT, false, false},
-+    {0.64f, 0.63f, 0.11f, X_INPUT_GAMEPAD_DPAD_RIGHT, false, false},
++    {0.52f, 0.50f, 0.11f, rex::input::X_INPUT_GAMEPAD_DPAD_UP, false, false},
++    {0.52f, 0.76f, 0.11f, rex::input::X_INPUT_GAMEPAD_DPAD_DOWN, false, false},
++    {0.40f, 0.63f, 0.11f, rex::input::X_INPUT_GAMEPAD_DPAD_LEFT, false, false},
++    {0.64f, 0.63f, 0.11f, rex::input::X_INPUT_GAMEPAD_DPAD_RIGHT, false, false},
 +    // Face buttons - right cluster.
-+    {0.87f, 0.76f, 0.11f, X_INPUT_GAMEPAD_A, false, false},
-+    {0.96f, 0.63f, 0.11f, X_INPUT_GAMEPAD_B, false, false},
-+    {0.78f, 0.63f, 0.11f, X_INPUT_GAMEPAD_X, false, false},
-+    {0.87f, 0.50f, 0.11f, X_INPUT_GAMEPAD_Y, false, false},
++    {0.87f, 0.76f, 0.11f, rex::input::X_INPUT_GAMEPAD_A, false, false},
++    {0.96f, 0.63f, 0.11f, rex::input::X_INPUT_GAMEPAD_B, false, false},
++    {0.78f, 0.63f, 0.11f, rex::input::X_INPUT_GAMEPAD_X, false, false},
++    {0.87f, 0.50f, 0.11f, rex::input::X_INPUT_GAMEPAD_Y, false, false},
 +    // Shoulders.
-+    {0.44f, 0.28f, 0.09f, X_INPUT_GAMEPAD_LEFT_SHOULDER, false, false},
-+    {0.95f, 0.28f, 0.09f, X_INPUT_GAMEPAD_RIGHT_SHOULDER, false, false},
++    {0.44f, 0.28f, 0.09f, rex::input::X_INPUT_GAMEPAD_LEFT_SHOULDER, false, false},
++    {0.95f, 0.28f, 0.09f, rex::input::X_INPUT_GAMEPAD_RIGHT_SHOULDER, false, false},
 +    // Triggers (top edge of the right half).
 +    {0.60f, 0.16f, 0.09f, 0, true, true},
 +    {0.76f, 0.16f, 0.09f, 0, true, false},
 +    // System buttons.
-+    {0.68f, 0.05f, 0.07f, X_INPUT_GAMEPAD_BACK, false, false},
-+    {0.84f, 0.05f, 0.07f, X_INPUT_GAMEPAD_START, false, false},
++    {0.68f, 0.05f, 0.07f, rex::input::X_INPUT_GAMEPAD_BACK, false, false},
++    {0.84f, 0.05f, 0.07f, rex::input::X_INPUT_GAMEPAD_START, false, false},
 +};
 +
 +// Left of this fraction of the width is the virtual left stick.
@@ -182,10 +182,10 @@ index 0000000..f71f10d
 +      }
 +      // A second simultaneous finger is a stick click (LS / RS).
 +      if (fingers_left > 1) {
-+        buttons |= X_INPUT_GAMEPAD_LEFT_THUMB;
++        buttons |= rex::input::X_INPUT_GAMEPAD_LEFT_THUMB;
 +      }
 +      if (fingers_right > 1) {
-+        buttons |= X_INPUT_GAMEPAD_RIGHT_THUMB;
++        buttons |= rex::input::X_INPUT_GAMEPAD_RIGHT_THUMB;
 +      }
 +    }
 +
@@ -298,7 +298,7 @@ index 0000000..21a164b
 +/// a mutex-protected finger map, so GetDeviceState is safe to call from the
 +/// guest threads that poll XInput.
 +///
-+/// Button bits are the X_INPUT_GAMEPAD_* values, which match
++/// Button bits are the rex::input::X_INPUT_GAMEPAD_* values, which match
 +/// kPadInputs[].bit in pad_actions.h one-to-one.
 +std::unique_ptr<rex::input::InputDriver> CreateTouchInputDriver();
 +

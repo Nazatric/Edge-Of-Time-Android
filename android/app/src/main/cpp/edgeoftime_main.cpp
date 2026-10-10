@@ -252,7 +252,7 @@ Uint32 SDLCALL FramePumpTimerCallback(void* userdata, SDL_TimerID timer_id, Uint
 // ---------------------------------------------------------------------------
 
 std::optional<int> TryBootGame(rex::ui::SDLWindowedAppContext& app_context) {
-  void* lib = SDL_LoadObject("libreeot_game.so");
+  SDL_SharedObject* lib = SDL_LoadObject("libreeot_game.so");
   if (!lib) {
     return std::nullopt;
   }
