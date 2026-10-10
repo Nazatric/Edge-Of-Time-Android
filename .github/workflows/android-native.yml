@@ -191,6 +191,15 @@ jobs:
           path: native-libs/arm64-v8a/*.so
           retention-days: 14
 
+      - name: Gate on build results
+        if: always()
+        run: |
+          if [ "${{ steps.sdkbuild.outputs.sdk_exit }}" != "0" ] || [ "${{ steps.appbuild.outputs.app_exit }}" != "0" ]; then
+            echo "native-core: build failed (sdk=${{ steps.sdkbuild.outputs.sdk_exit }} app=${{ steps.appbuild.outputs.app_exit }})"
+            exit 1
+          fi
+          echo "native-core: SDK and app-lib builds succeeded"
+
       - name: Report to log channel
         if: always()
         env:
@@ -352,6 +361,15 @@ jobs:
           name: edge-of-time-android-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
+
+      - name: Gate on APK artifact
+        if: always()
+        run: |
+          if [ ! -f android/app/build/outputs/apk/debug/app-debug.apk ]; then
+            echo "apk: no APK was produced"
+            exit 1
+          fi
+          echo "apk: APK produced: $(ls -la android/app/build/outputs/apk/debug/app-debug.apk)"
 
       - name: Report to log channel
         if: always()

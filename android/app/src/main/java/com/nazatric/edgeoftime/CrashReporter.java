@@ -72,7 +72,7 @@ public final class CrashReporter implements Thread.UncaughtExceptionHandler {
             pw.println("time: " + new Date());
             pw.println("device: " + Build.MANUFACTURER + " " + Build.MODEL
                     + " (SDK " + Build.VERSION.SDK_INT + ", " + Build.VERSION.RELEASE + ")");
-            pw.println("abi: " + Build.SUPPORTED_ABIS.length > 0 ? Build.SUPPORTED_ABIS[0] : "?");
+            pw.println("abi: " + (Build.SUPPORTED_ABIS.length > 0 ? Build.SUPPORTED_ABIS[0] : "?"));
             try {
                 PackageInfo pi = appContext.getPackageManager().getPackageInfo(
                         appContext.getPackageName(), 0);
