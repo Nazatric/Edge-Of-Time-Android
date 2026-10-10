@@ -521,3 +521,89 @@ jobs:
             echo '```'
           } > body.md
           gh issue comment 1 --repo ${{ github.repository }} --body-file body.md
+
+  # ---------------------------------------------------------------------------
+  # Configure-probe the game shared library (android/game) for Android arm64.
+  # Validates the game CMake + the patches/upstream/ series + the codegen-less
+  # build path (no game files needed). The full build with game files runs in
+  # codegen.yml (game-android job, secrets-gated).
+  # ---------------------------------------------------------------------------
+  game-android-configure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Apply Android patches (SDK + upstream)
+        run: ./tools/ci/apply_all_patches.sh
+
+      - name: Configure the game library for arm64-v8a
+        id: cfg
+        continue-on-error: true
+        run: |
+          NDK="$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"
+          LINK16K="-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384"
+          # Host dxc (x64) for the UI shader compile steps: the vendored dxc-bin
+          # picks arm64 binaries when cross-compiling, which cannot run here.
+          DXC_BIN="$PWD/upstream/thirdparty/XenosRecomp/thirdparty/dxc-bin"
+          set +e
+          cmake -S android/game -B out/android-game -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI="$ABI" \
+            -DANDROID_PLATFORM="android-$API" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DREXGLUE_SDK_DIR="$PWD/thirdparty/rexglue-sdk" \
+            -DUPSTREAM_DIR="$PWD/upstream" \
+            -DREXGLUE_BUILD_DIR="$PWD/thirdparty/rexglue-sdk/out/linux-arm64" \
+            -DREX_ANDROID_SUPPORT_INCLUDE="$PWD/android/rex_android/include" \
+            -DREEOT_DXC="LD_LIBRARY_PATH=$DXC_BIN/lib/x64 $DXC_BIN/bin/x64/dxc-linux" \
+            -DCMAKE_CXX_FLAGS="-fexperimental-library" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fexperimental-library $LINK16K" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-fexperimental-library $LINK16K" \
+            > game_configure.log 2>&1
+          rc=$?
+          echo "GAME_CONFIGURE_EXIT=$rc" | tee -a game_configure.log
+          echo "cfg_exit=$rc" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the reeot_game target exists
+        if: always()
+        continue-on-error: true
+        run: |
+          echo "--- targets ---"
+          cmake --build out/android-game --target help 2>/dev/null \
+            | grep -E "reeot_game|reeot_GameLogic|reeot_shader_cache" | head -6 || true
+          echo "--- configure tail ---"
+          tail -c 3000 game_configure.log
+
+      - name: Gate
+        if: always()
+        run: |
+          if [ "${{ steps.cfg.outputs.cfg_exit }}" != "0" ]; then
+            echo "game-android-configure: configure failed (see log channel)"
+            exit 1
+          fi
+          echo "game-android-configure: configure OK"
+
+      - name: Report to log channel
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### Game Android configure probe — run ${{ github.run_id }}"
+            echo "#### result"
+            echo '```'
+            grep -E "GAME_CONFIGURE_EXIT|CMake Error|error:|reeot_game" game_configure.log 2>/dev/null | head -30 || echo "(no log)"
+            echo '```'
+            echo "#### configure: CMake errors"
+            echo '```'
+            grep -A12 "CMake Error" game_configure.log 2>/dev/null | head -60 || true
+            echo '```'
+            echo "#### configure: tail"
+            echo '```'
+            tail -c 5000 game_configure.log 2>/dev/null || echo "(no log)"
+            echo '```'
+          } > body.md
+          gh issue comment 1 --repo ${{ github.repository }} --body-file body.md

@@ -256,6 +256,34 @@ Pipeline stages (`.github/workflows/codegen.yml`):
 Local equivalent (no CI): `tools/codegen/run_codegen.sh <path-to-game-files>`
 runs steps 2-4 on a developer machine.
 
+### Host tools in cross builds (patches/upstream/0005)
+
+When upstream is configured for Android from an x86_64 runner, the tools it
+runs at build time (`rexglue` for codegen + the achievements dump, `pkztool`
+and `pkzprep` for the UI package, `XenosRecomp` for the shader cache) are built
+for the **target** and cannot execute on the runner. Patch
+`0005-cmake-host-tool-overrides-for-cross-builds.patch` adds cache variables
+that point those build steps at native builds of the same tools:
+
+```bash
+cmake -S android/game -B out/android-game -G Ninja \
+    -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+    -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 \
+    -DREXGLUE_SDK_DIR="$PWD/thirdparty/rexglue-sdk" \
+    -DUPSTREAM_DIR="$PWD/upstream" \
+    -DREEOT_HOST_REXGLUE="$PWD/out/host-tools/rexglue/rexglue" \
+    -DREEOT_HOST_PKZTOOL="$PWD/out/host-tools/pkzlib/pkztool" \
+    -DREEOT_HOST_PKZPREP="$PWD/out/host-tools/pkzprep" \
+    -DREEOT_HOST_XENOSRECOMP="$PWD/out/host-tools/xenosrecomp/XenosRecomp" \
+    -DREEOT_DXC="LD_LIBRARY_PATH=.../dxc-bin/lib/x64 .../dxc-bin/bin/x64/dxc-linux"
+cmake --build out/android-game --parallel 2 --target reeot_game
+```
+
+The UI package authoring additionally copies fonts/textures **from the retail
+`Main.pak`/`Common.pak`** (`REEOT_REFERENCE_PAKS`); supply them with the
+`GAME_REFERENCE_PAKS_B64` secret (see `tools/codegen/README.md`). This is one
+more user-supplied input, like the shader containers.
+
 ### Why the Android game build needs one more integration step
 
 Upstream builds the game as an `add_executable` (`reeot`). On Android, a

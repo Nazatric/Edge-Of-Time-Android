@@ -254,28 +254,16 @@ jobs:
   game-android:
     runs-on: ubuntu-latest
     timeout-minutes: 180
-    needs: [ host-tools, codegen ]
+    needs: [ host-tools ]
     if: >-
       github.event_name == 'workflow_dispatch'
-      && needs.codegen.outputs.codegen_exit == '0'
+      && needs.host-tools.outputs.tools_exit == '0'
+      && secrets.GAME_DEFAULT_XEX_B64 != ''
+      && secrets.GAME_GAMELOGIC_DLL_B64 != ''
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - name: Download host tools + generated code
-        uses: actions/download-artifact@v4
-        with:
-          name: codegen-host-tools
-          path: out/host-tools
-
-      - name: Restore generated game code
-        run: |
-          # The codegen job's artifact holds upstream/generated/.
-          # Re-run codegen here from the secrets instead of trusting artifacts
-          # across jobs: identical inputs, and the game files never leave the
-          # runner between jobs. (Artifacts would work too; secrets are simpler.)
-          echo "generated code will be reproduced from secrets below"
 
       - name: Decode game files from secrets
         env:
@@ -283,22 +271,34 @@ jobs:
           GAME_GAMELOGIC_DLL_B64: ${{ secrets.GAME_GAMELOGIC_DLL_B64 }}
         run: |
           set -e
+          # Codegen itself runs inside the game build (the host rexglue is
+          # wired in via the patches/upstream/0005 overrides), so the game
+          # files only need to be staged here.
           mkdir -p upstream/assets/Data
           echo "$GAME_DEFAULT_XEX_B64" | base64 -d > upstream/assets/Default.xex
           echo "$GAME_GAMELOGIC_DLL_B64" | base64 -d > upstream/assets/Data/GameLogic.dll
-          chmod +x out/host-tools/rexglue 2>/dev/null || true
-          (cd upstream && "$OLDPWD/out/host-tools/rexglue" codegen "$OLDPWD/upstream/reeot_manifest.toml") \
-              > codegen.log 2>&1
-          echo "CODEGEN_EXIT=$?"
-          test -f upstream/generated/default/sources.cmake
+          ls -la upstream/assets/Default.xex upstream/assets/Data/GameLogic.dll
 
       - name: Apply Android patches (SDK + upstream)
-        run: |
-          ./tools/ci/apply_patches.sh thirdparty/rexglue-sdk patches/rexglue-sdk
-          ./tools/ci/apply_patches.sh upstream patches/upstream || \
-            echo "(no upstream patches yet)"
+        run: ./tools/ci/apply_all_patches.sh
 
-      - name: Configure the game for Android arm64
+      - name: Download host tools
+        uses: actions/download-artifact@v4
+        with:
+          name: codegen-host-tools
+          path: out/host-tools
+
+      - name: Decode reference paks (for the UI package authoring)
+        if: ${{ secrets.GAME_REFERENCE_PAKS_B64 != '' }}
+        env:
+          GAME_REFERENCE_PAKS_B64: ${{ secrets.GAME_REFERENCE_PAKS_B64 }}
+        run: |
+          set -e
+          mkdir -p reference_paks
+          echo "$GAME_REFERENCE_PAKS_B64" | base64 -d | tar xz -C reference_paks
+          ls -la reference_paks | head
+
+      - name: Configure the game library for Android arm64
         id: cfg
         continue-on-error: true
         run: |
@@ -308,14 +308,25 @@ jobs:
           # picks arm64 binaries when cross-compiling, which cannot run here.
           DXC_BIN="$PWD/upstream/thirdparty/XenosRecomp/thirdparty/dxc-bin"
           REEOT_DXC="LD_LIBRARY_PATH=$DXC_BIN/lib/x64 $DXC_BIN/bin/x64/dxc-linux"
+          # Host tools for the cross build (patches/upstream/0005): the target
+          # builds of rexglue/pkztool/pkzprep/XenosRecomp cannot run here.
+          chmod +x out/host-tools/rexglue/rexglue out/host-tools/xenosrecomp/XenosRecomp \
+                   out/host-tools/pkzlib/pkztool out/host-tools/pkzprep 2>/dev/null || true
           set +e
-          cmake -S upstream -B out/android-game -G Ninja \
+          cmake -S android/game -B out/android-game -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI="$ABI" \
             -DANDROID_PLATFORM="android-$API" \
             -DCMAKE_BUILD_TYPE=Release \
-            -DREXSDK_DIR="$PWD/thirdparty/rexglue-sdk" \
+            -DREXGLUE_SDK_DIR="$PWD/thirdparty/rexglue-sdk" \
+            -DUPSTREAM_DIR="$PWD/upstream" \
+            -DREXGLUE_BUILD_DIR="$PWD/thirdparty/rexglue-sdk/out/linux-arm64" \
+            -DREX_ANDROID_SUPPORT_INCLUDE="$PWD/android/rex_android/include" \
             -DREEOT_DXC="$REEOT_DXC" \
+            -DREEOT_HOST_REXGLUE="$PWD/out/host-tools/rexglue/rexglue" \
+            -DREEOT_HOST_PKZTOOL="$PWD/out/host-tools/pkzlib/pkztool" \
+            -DREEOT_HOST_PKZPREP="$PWD/out/host-tools/pkzprep" \
+            -DREEOT_HOST_XENOSRECOMP="$PWD/out/host-tools/xenosrecomp/XenosRecomp" \
             -DCMAKE_CXX_FLAGS="-fexperimental-library" \
             -DCMAKE_EXE_LINKER_FLAGS="-fexperimental-library $LINK16K" \
             -DCMAKE_SHARED_LINKER_FLAGS="-fexperimental-library $LINK16K" \
@@ -324,14 +335,16 @@ jobs:
           echo "CONFIGURE_EXIT=$rc" | tee -a configure.log
           echo "cfg_exit=$rc" >> "$GITHUB_OUTPUT"
 
-      - name: Build the game for arm64-v8a
+      - name: Build the game library for arm64-v8a
         id: build
         continue-on-error: true
         run: |
           set +e
           if [ -d out/android-game ]; then
-            # -k 0: collect every distinct error in one report.
-            cmake --build out/android-game --parallel 2 --target reeot -- -k 0 > build.log 2>&1
+            # -k 0: collect every distinct error in one report. Codegen runs
+            # automatically (host rexglue via the 0005 overrides) once the game
+            # files are in upstream/assets/.
+            cmake --build out/android-game --parallel 2 --target reeot_game -- -k 0 > build.log 2>&1
             rc=$?
             echo "BUILD_EXIT=$rc" | tee -a build.log
             echo "build_exit=$rc" >> "$GITHUB_OUTPUT"

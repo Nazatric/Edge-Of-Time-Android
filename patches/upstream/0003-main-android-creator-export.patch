@@ -1,0 +1,18 @@
+diff --git a/src/main.cpp b/src/main.cpp
+index ac5a771..616ded7 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -11,3 +11,13 @@
+ #include "reeot_app.h"
+ 
+ REX_DEFINE_APP(reeot, ReeotApp::Create)
++
++#if defined(__ANDROID__)
++// Android: the game is built as a shared library (libreeot_game.so) that the
++// launcher loads and runs in-process. Export the app creator through a C
++// symbol so the launcher can resolve it with SDL_LoadFunction without C++
++// name mangling.
++extern "C" void *reeot_windowed_app_creator() {
++  return reinterpret_cast<void *>(rex::ui::GetWindowedAppCreator());
++}
++#endif

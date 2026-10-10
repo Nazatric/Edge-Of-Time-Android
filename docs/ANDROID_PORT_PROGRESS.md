@@ -19,7 +19,10 @@ emulator is available to the agent. Every claim here is a *build-time* result.
 | M1a arm64 ELF verified + 16 KB page aligned | ✅ **done** | run `37996301874` (`LOAD align 0x4000`) |
 | M2 Gradle project producing an installable APK | ✅ **done** | runs `38025918515` + `38026377028` |
 | M2a APK verified (badging, arch, 16 KB, SHA-256) + prerelease published | ✅ **done** | see "APK delivery" below |
+| M2b Upstream game code compiles for arm64-v8a | ✅ **done** | probe run `38030105699`: **56 passed, 0 failed** |
 | M3 Android lifecycle / surface recreation | 🟡 largely done | patches 0010/0011 + surface acquire/release; **device-untested** |
+| M5 Touchscreen controls (virtual XInput pad) | 🟡 implemented, **device-untested** | `patches/upstream/0004` (`touch_input.cpp`); registered in `ReeotApp::OnPreSetup` |
+| M7 Game as loadable `libreeot_game.so` + launcher hook | 🟡 implemented, build **needs game files** | `android/game/CMakeLists.txt`, patch 0003 (creator export), launcher `TryBootGame` |
 | M4 Vulkan device creation on a device | 🔒 blocked | needs hardware |
 | M5 Touchscreen controls | ⬜ not started | — |
 | M6 Game-file setup flow (SAF) | 🟡 native half done | `filesystem_android.cpp` + Java picker + probe |
@@ -130,23 +133,54 @@ Items 5, 6, 7, 12 and 14 above are the missing pieces, now implemented in
 
 ---
 
+## Patch inventory (16, all CI-verified to apply)
+
+**SDK (`patches/rexglue-sdk/`)** — 0001 X11/Wayland off on Android · 0002/0003
+libc++ shims · 0004 AArch64 fiber backend · 0005 core CMake Android sources ·
+0006 global Android include dir · 0007 SDL window Android surface · 0008 no
+robust mutex on Bionic · 0009 main_android include · 0010 SDL: clear the
+ANativeWindow property on surfaceDestroyed · 0011 SDL window: refresh the
+presenter surface on Android resize · **0012 `GetExecutableFolder()` resolves
+the app `nativeLibraryDir` via JNI on Android** (so the guest `reeot_GameLogic`
+module preload works).
+
+**Upstream (`patches/upstream/`)** — 0001 `std::atomic_ref` → `__atomic`
+builtins fallback (NDK libc++ lacks `atomic_ref`) · 0002 crash handler uses
+libunwind on Android (Bionic has no `execinfo.h`) · 0003 `main.cpp` exports
+`reeot_windowed_app_creator` (C symbol) on Android · 0004 on-screen touch
+controls (`src/goliath/controller/touch_input.cpp`, virtual XInput gamepad,
+registered in `ReeotApp::OnPreSetup`) · 0005 CMake host-tool overrides for
+cross builds (`REEOT_HOST_REXGLUE/PKZTOOL/PKZPREP/XENOSRECOMP`).
+
+## Regression gates (all green in CI)
+
+- `native-core`: SDK compiles+links arm64; app lib builds; artifacts listed;
+  readelf arch + 16 KB alignment gate.
+- `upstream-android-probe`: **56/56** upstream sources compile for arm64-v8a
+  (only `main.cpp`/`reeot_app.cpp` skipped — they need codegen output).
+- `game-android-configure`: `android/game` configures for arm64-v8a (validates
+  the game CMake + the patches/upstream series).
+- `apk`: real debug APK, aapt2 badging, packaged-lib arch/alignment, SHA-256,
+  prerelease publish — all gated.
+
 ## Next highest-priority action
 
 **M2 is done** (APK + prerelease published — see "APK delivery" above).
+**M7 is implemented**: the launcher boots `libreeot_game.so` when it is
+packaged (GAME BOOTSTRAP HOOK in `edgeoftime_main.cpp`), and
+`android/game/CMakeLists.txt` builds it from upstream sources + codegen
+output. The remaining step to gameplay is running the secrets-gated
+`game-android` job (`.github/workflows/codegen.yml`) with the user's game
+files, then packaging `libreeot_game.so` + `reeot_GameLogic` into the APK.
 
-Next, in order:
+Then, in order:
 
-1. **M7 — game-code integration.** The codegen pipeline is ready
-   (`tools/codegen/`, `.github/workflows/codegen.yml`, `docs/ANDROID_PORT_CODEGEN.md`).
-   With the user's game files supplied as CI secrets, the pipeline runs
-   `rexglue codegen` and builds the game for arm64-v8a. The remaining
-   integration work is turning upstream's `reeot` executable target into a
-   loadable `libreeot_game.so` for the launcher's GAME BOOTSTRAP HOOK, and
-   adding the Android branches to upstream's platform layer
-   (`patches/upstream/`) — the `game-android` CI job reports exactly what
-   still fails to compile.
-2. **M5 — touchscreen controls** derived from the real upstream mappings
-   (`upstream/src/goliath/controller/`), wired through the SDK window's
-   input listeners.
-3. **M3/M4 device validation** — install/launch on a real device or emulator
-   once one is available; nothing about rendering/audio/FPS is verified yet.
+1. **First game build + APK with game code** — `workflow_dispatch` the
+   "Game Codegen Pipeline" with `GAME_DEFAULT_XEX_B64`,
+   `GAME_GAMELOGIC_DLL_B64`, `GAME_SHADER_DIR_B64` (+ `GAME_REFERENCE_PAKS_B64`),
+   stage the produced libraries into `android/app/src/main/jniLibs/arm64-v8a/`,
+   rebuild the APK.
+2. **M3/M4/M5 device validation** — install/launch on a real device or
+   emulator once one is available; capture logcat/tombstones; verify the
+   renderer, audio, touch controls, and stability. Nothing about
+   rendering/audio/FPS is verified yet.

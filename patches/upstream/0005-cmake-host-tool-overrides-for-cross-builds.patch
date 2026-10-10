@@ -1,0 +1,148 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -29,6 +29,35 @@
+ set(REEOT_SHADER_INPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders" CACHE PATH
+     "The game's shader containers, one per file, the shader cache is built from")
+ 
++# Host tools for cross builds. When cross-compiling (e.g. Android from an
++# x86_64 build machine), rexglue / pkztool / pkzprep / XenosRecomp are built for
++# the TARGET and cannot run on the build machine. Point these at native builds
++# of the same tools; empty means "use the target-built tool" (native builds).
++set(REEOT_HOST_REXGLUE "" CACHE FILEPATH "Native rexglue tool for cross builds")
++set(REEOT_HOST_PKZTOOL "" CACHE FILEPATH "Native pkztool for cross builds")
++set(REEOT_HOST_PKZPREP "" CACHE FILEPATH "Native pkzprep for cross builds")
++set(REEOT_HOST_XENOSRECOMP "" CACHE FILEPATH "Native XenosRecomp for cross builds")
++if(REEOT_HOST_REXGLUE)
++    set(REEOT_REXGLUE_CMD "${REEOT_HOST_REXGLUE}")
++else()
++    set(REEOT_REXGLUE_CMD "$<TARGET_FILE:rex::rexglue>")
++endif()
++if(REEOT_HOST_PKZTOOL)
++    set(REEOT_PKZTOOL_CMD "${REEOT_HOST_PKZTOOL}")
++else()
++    set(REEOT_PKZTOOL_CMD "pkztool")
++endif()
++if(REEOT_HOST_PKZPREP)
++    set(REEOT_PKZPREP_CMD "${REEOT_HOST_PKZPREP}")
++else()
++    set(REEOT_PKZPREP_CMD "pkzprep")
++endif()
++if(REEOT_HOST_XENOSRECOMP)
++    set(REEOT_XENOSRECOMP_CMD "${REEOT_HOST_XENOSRECOMP}")
++else()
++    set(REEOT_XENOSRECOMP_CMD "$<TARGET_FILE:XenosRecomp>")
++endif()
++
+ include(generated/rexglue.cmake)
+ # The macOS Vulkan staging in rexglue_setup_target() reads REXGLUE_ROOT.
+ if(REXSDK_DIR AND NOT REXGLUE_ROOT)
+@@ -61,7 +90,7 @@
+ add_custom_command(
+     OUTPUT "${REEOT_PKZ_OUTPUT}"
+     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/pkz"
+-    COMMAND pkztool make "${REEOT_PKZ_DATA}/ReeotUI.manifest" "${REEOT_PKZ_OUTPUT}"
++    COMMAND ${REEOT_PKZTOOL_CMD} make "${REEOT_PKZ_DATA}/ReeotUI.manifest" "${REEOT_PKZ_OUTPUT}"
+             --paks "${REEOT_REFERENCE_PAKS}"
+     DEPENDS pkztool
+             "${REEOT_PKZ_DATA}/ReeotUI.manifest"
+@@ -80,7 +109,7 @@
+     add_custom_command(
+         OUTPUT "${table}"
+         COMMAND ${CMAKE_COMMAND} -E make_directory "${REEOT_PKZ_DATA}/generated"
+-        COMMAND pkzprep strings "${REEOT_PKZ_DATA}/strings/menu.txt" "${translation}" "${table}"
++        COMMAND ${REEOT_PKZPREP_CMD} strings "${REEOT_PKZ_DATA}/strings/menu.txt" "${translation}" "${table}"
+         DEPENDS pkzprep "${REEOT_PKZ_DATA}/strings/menu.txt" "${translation}"
+         COMMENT "Writing ${name} over the English menu strings"
+         VERBATIM)
+@@ -90,7 +119,7 @@
+ add_custom_command(
+     OUTPUT "${REEOT_MENU_PKZ_OUTPUT}"
+     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/pkz"
+-    COMMAND pkztool make "${REEOT_PKZ_DATA}/ReeotMenu.manifest" "${REEOT_MENU_PKZ_OUTPUT}"
++    COMMAND ${REEOT_PKZTOOL_CMD} make "${REEOT_PKZ_DATA}/ReeotMenu.manifest" "${REEOT_MENU_PKZ_OUTPUT}"
+             --paks "${REEOT_REFERENCE_PAKS}"
+     DEPENDS pkztool
+             "${REEOT_PKZ_DATA}/ReeotMenu.manifest"
+@@ -103,7 +132,7 @@
+ add_custom_command(
+     OUTPUT "${REEOT_ACH_DUMP}/achievements.toml"
+     COMMAND ${CMAKE_COMMAND} -E make_directory "${REEOT_ACH_DUMP}"
+-    COMMAND $<TARGET_FILE:rex::rexglue> init --project-name reeot --xex-path "${REEOT_XEX}"
++    COMMAND ${REEOT_REXGLUE_CMD} init --project-name reeot --xex-path "${REEOT_XEX}"
+             achievements "${REEOT_XEX}" "${REEOT_ACH_DUMP}"
+     DEPENDS "${REEOT_XEX}"
+     COMMENT "Extracting the achievements and their icons from Default.xex"
+@@ -111,7 +140,7 @@
+ set(REEOT_ACH_STRINGS "${REEOT_PKZ_DATA}/generated/reeot_ach_strings.txt")
+ add_custom_command(
+     OUTPUT "${REEOT_ACH_STRINGS}"
+-    COMMAND pkzprep achievements "${REEOT_ACH_DUMP}/achievements.toml" REEOT_ACH_
++    COMMAND ${REEOT_PKZPREP_CMD} achievements "${REEOT_ACH_DUMP}/achievements.toml" REEOT_ACH_
+             "${REEOT_PKZ_DATA}/strings/achievements.txt" "${REEOT_ACH_STRINGS}"
+     DEPENDS pkzprep "${REEOT_ACH_DUMP}/achievements.toml" "${REEOT_PKZ_DATA}/strings/achievements.txt"
+     COMMENT "Writing the achievement strings from the rexglue dump"
+@@ -119,7 +148,7 @@
+ set(REEOT_ACH_ICONS "${REEOT_PKZ_DATA}/generated/achievement_icons_64.png")
+ add_custom_command(
+     OUTPUT "${REEOT_ACH_ICONS}"
+-    COMMAND pkzprep achicons "${REEOT_ACH_DUMP}/icons" "${REEOT_PKZ_DATA}/achievements/secret_plate.png"
++    COMMAND ${REEOT_PKZPREP_CMD} achicons "${REEOT_ACH_DUMP}/icons" "${REEOT_PKZ_DATA}/achievements/secret_plate.png"
+             "${REEOT_ACH_ICONS}"
+     DEPENDS pkzprep "${REEOT_ACH_DUMP}/achievements.toml" "${REEOT_PKZ_DATA}/achievements/secret_plate.png"
+     COMMENT "Building the achievement icon sheet from the rexglue dump"
+@@ -128,7 +157,7 @@
+ add_custom_command(
+     OUTPUT "${REEOT_ACH_PKZ_OUTPUT}"
+     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/pkz"
+-    COMMAND pkztool make "${REEOT_PKZ_DATA}/ReeotAchievements.manifest" "${REEOT_ACH_PKZ_OUTPUT}"
++    COMMAND ${REEOT_PKZTOOL_CMD} make "${REEOT_PKZ_DATA}/ReeotAchievements.manifest" "${REEOT_ACH_PKZ_OUTPUT}"
+             --paks "${REEOT_REFERENCE_PAKS}"
+     DEPENDS pkztool
+             "${REEOT_PKZ_DATA}/ReeotAchievements.manifest"
+@@ -141,7 +170,7 @@
+ add_custom_command(
+     OUTPUT "${REEOT_ICONS_PKZ_OUTPUT}"
+     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/pkz"
+-    COMMAND pkztool make "${REEOT_PKZ_DATA}/ReeotIcons.manifest" "${REEOT_ICONS_PKZ_OUTPUT}"
++    COMMAND ${REEOT_PKZTOOL_CMD} make "${REEOT_PKZ_DATA}/ReeotIcons.manifest" "${REEOT_ICONS_PKZ_OUTPUT}"
+             --paks "${REEOT_REFERENCE_PAKS}"
+     DEPENDS pkztool
+             "${REEOT_PKZ_DATA}/ReeotIcons.manifest"
+@@ -158,7 +187,7 @@
+ add_custom_command(
+     OUTPUT "${REEOT_SUITS_PKZ_OUTPUT}"
+     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/pkz"
+-    COMMAND pkztool make "${REEOT_PKZ_DATA}/ReeotSuits.manifest" "${REEOT_SUITS_PKZ_OUTPUT}"
++    COMMAND ${REEOT_PKZTOOL_CMD} make "${REEOT_PKZ_DATA}/ReeotSuits.manifest" "${REEOT_SUITS_PKZ_OUTPUT}"
+             --paks "${REEOT_REFERENCE_PAKS}"
+     DEPENDS pkztool
+             "${REEOT_PKZ_DATA}/ReeotSuits.manifest"
+@@ -204,7 +233,7 @@
+ include(cmake/host_shaders.cmake)
+ 
+ add_custom_target(reeot_shader_cache_regen
+-    COMMAND $<TARGET_FILE:XenosRecomp>
++    COMMAND ${REEOT_XENOSRECOMP_CMD}
+             "${REEOT_SHADER_INPUT_DIR}" "${REEOT_SHADER_CACHE_CPP}" "${REEOT_SHADER_COMMON_H}"
+     DEPENDS XenosRecomp
+     COMMENT "Recompiling EOT Xenos shaders into ${REEOT_SHADER_CACHE_CPP}"
+@@ -215,7 +244,7 @@
+ elseif(IS_DIRECTORY "${REEOT_SHADER_INPUT_DIR}")
+     add_custom_command(
+         OUTPUT "${REEOT_SHADER_CACHE_CPP}"
+-        COMMAND $<TARGET_FILE:XenosRecomp>
++        COMMAND ${REEOT_XENOSRECOMP_CMD}
+                 "${REEOT_SHADER_INPUT_DIR}" "${REEOT_SHADER_CACHE_CPP}" "${REEOT_SHADER_COMMON_H}"
+         DEPENDS XenosRecomp "${REEOT_SHADER_COMMON_H}"
+         COMMENT "Recompiling the game's shaders into ${REEOT_SHADER_CACHE_CPP}"
+--- a/generated/rexglue.cmake
++++ b/generated/rexglue.cmake
+@@ -117,7 +117,7 @@
+ add_custom_command(
+     OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/generated/default/codegen.build.stamp"
+            ${REXGLUE_ENTRYPOINT_GENERATED_SOURCES}
+-    COMMAND $<TARGET_FILE:rex::rexglue> codegen ${CMAKE_CURRENT_SOURCE_DIR}/reeot_manifest.toml
++    COMMAND ${REEOT_REXGLUE_CMD} codegen ${CMAKE_CURRENT_SOURCE_DIR}/reeot_manifest.toml
+     DEPFILE "${CMAKE_CURRENT_SOURCE_DIR}/generated/default/codegen.d"
+     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+     COMMENT "Generating recompiled code for reeot"

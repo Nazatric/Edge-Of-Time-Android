@@ -12,7 +12,7 @@ Full technical trace: `docs/ANDROID_PORT_CODEGEN.md`.
 
 | Script | Purpose | Needs game files? |
 | --- | --- | --- |
-| `build_host_tools.sh` | Builds `rexglue` (codegen CLI) and `XenosRecomp` (shader recompiler) natively for the build machine | **No** |
+| `build_host_tools.sh` | Builds `rexglue` (codegen CLI), `XenosRecomp` (shader recompiler), `pkztool` + `pkzprep` (UI package authoring) natively for the build machine | **No** |
 | `run_codegen.sh <game-dir>` | Stages the game files into `upstream/assets/`, runs `rexglue codegen`, optionally generates `generated/shader_cache.cpp` | **Yes** (your own dump) |
 
 ## Legal input requirements (your own copy of the game)
@@ -53,6 +53,7 @@ Actions → New repository secret):
 | `GAME_DEFAULT_XEX_B64` | `base64 -w0 Default.xex` |
 | `GAME_GAMELOGIC_DLL_B64` | `base64 -w0 Data/GameLogic.dll` |
 | `GAME_SHADER_DIR_B64` (optional) | `tar czf - -C /path/to/shaders . \| base64 -w0` |
+| `GAME_REFERENCE_PAKS_B64` (optional) | `tar czf - -C /path/to/paks . \| base64 -w0` — the retail `Main.pak`/`Common.pak` dir, used only to author the UI package (fonts/textures copied from them) |
 
 Then run the **"Game Codegen Pipeline"** workflow from the Actions tab.
 
@@ -65,8 +66,10 @@ Then run the **"Game Codegen Pipeline"** workflow from the Actions tab.
   your game files** — it lives only in your repository's Actions artifacts
   (short retention) and is yours to download or delete.
 - `shader-cache` job (if `GAME_SHADER_DIR_B64` is set): `generated/shader_cache.cpp`.
-- `game-android` job: configures and builds the game for arm64-v8a against
-  the patched SDK and reports exactly what compiles.
+- `game-android` job: configures and builds the game shared library
+  (`libreeot_game.so`) for arm64-v8a via `android/game/CMakeLists.txt`,
+  with the host tools wired in through the `patches/upstream/0005` cross-build
+  overrides. Codegen runs automatically inside the build.
 
 ## Security notes
 

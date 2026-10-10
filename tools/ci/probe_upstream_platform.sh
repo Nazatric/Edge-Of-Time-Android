@@ -146,9 +146,12 @@ FLAGS=(
     -c
 )
 
-# The exact REEOT_SOURCES list from upstream/CMakeLists.txt.
+# The exact REEOT_SOURCES list from upstream/CMakeLists.txt, plus the
+# Android-conditional touch driver (added via list(APPEND) under if(ANDROID)).
 SOURCES=$(awk '/^set\(REEOT_SOURCES/,/^\)/' "$UP/CMakeLists.txt" \
     | grep -oE 'src/[A-Za-z0-9_/]+\.cpp' | sort -u)
+SOURCES="$SOURCES
+src/goliath/controller/touch_input.cpp"
 
 pass=0
 fail=0
